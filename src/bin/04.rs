@@ -45,7 +45,25 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    let (_, cards) = parse_input(input).ok()?;
+
+    let original_card_wins = cards
+        .into_iter()
+        .map(|(winning_numbers, numbers)| {
+            let winning_numbers = HashSet::<u32>::from_iter(winning_numbers);
+            let numbers = HashSet::<u32>::from_iter(numbers);
+            winning_numbers.intersection(&numbers).count()
+        })
+        .collect::<Vec<_>>();
+
+    let mut num_cards = vec![1; original_card_wins.len()];
+    for i in 0..original_card_wins.len() {
+        for di in 0..original_card_wins[i] {
+            num_cards[i + di + 1] += num_cards[i];
+        }
+    }
+
+    Some(num_cards.iter().sum())
 }
 
 #[cfg(test)]
@@ -61,6 +79,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(30));
     }
 }
