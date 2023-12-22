@@ -5,6 +5,7 @@ use nom::combinator::map_res;
 use nom::multi::{fold_many1, separated_list1};
 use nom::sequence::{preceded, tuple};
 use nom::IResult;
+
 advent_of_code::solution!(6);
 
 fn parse_input_part_one(input: &str) -> IResult<&str, Vec<(usize, usize)>> {
@@ -39,12 +40,38 @@ fn parse_input_part_two(input: &str) -> IResult<&str, (usize, usize)> {
     Ok((input, (time, distance)))
 }
 
-/// Counts the number of ways there are to beat the record distance.
-fn solve_race(race_time: usize, record_distance: usize) -> usize {
+/// Naively counts the number of ways there are to beat the record distance.
+fn solve_race_naive(race_time: usize, record_distance: usize) -> usize {
     (0..=race_time)
         .map(|pressed_time| (race_time - pressed_time) * pressed_time)
         .filter(|&distance| distance > record_distance)
         .count()
+}
+
+/// Algebraic solution to the problem.
+fn solve_race_algebraic(race_time: usize, record_distance: usize) -> usize {
+    // Find number of integer solutions to the following inequality:
+    //  record_distance < (race_time - pressed_time) * pressed_time
+    //  record_distance < race_time * pressed_time - pressed_time^2
+    //  pressed_time^2 - race_time * pressed_time + record_distance < 0
+    // with pressed_time as unknown and 0 <= pressed_time <= race_time
+
+    // Coefficients of the quadratic equation:
+    let a = 1.;
+    let b = -(race_time as f64);
+    let c = record_distance as f64;
+
+    // Solve the quadratic equation:
+    let discriminant_sqrt = (b * b - 4. * a * c).sqrt();
+    let x1 = (-b - discriminant_sqrt) / (2. * a);
+    let x2 = (-b + discriminant_sqrt) / (2. * a);
+
+    assert!(x1 <= x2);
+
+    let min_pressed_time = x1.floor() as usize + 1;
+    let max_pressed_time = x2.ceil() as usize - 1;
+
+    max_pressed_time - min_pressed_time + 1
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
@@ -52,13 +79,13 @@ pub fn part_one(input: &str) -> Option<usize> {
 
     races
         .into_iter()
-        .map(|(race_time, record_distance)| solve_race(race_time, record_distance))
+        .map(|(race_time, record_distance)| solve_race_algebraic(race_time, record_distance))
         .product1()
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
     let (_, (race_time, record_distance)) = parse_input_part_two(input).unwrap();
-    Some(solve_race(race_time, record_distance))
+    Some(solve_race_algebraic(race_time, record_distance))
 }
 
 #[cfg(test)]
