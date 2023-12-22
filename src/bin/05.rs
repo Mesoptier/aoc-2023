@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use nom::bytes::complete::tag;
 use nom::character::complete::{alpha1, digit1, line_ending, multispace1, space1};
 use nom::combinator::{map, map_res};
@@ -76,7 +77,86 @@ pub fn part_one(input: &str) -> Option<usize> {
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
-    None
+    let (_, (seeds, mut maps)) = parse_input(input).ok()?;
+
+    for map in &mut maps {
+        map.sort_by_key(|entry| entry.source_range_start);
+    }
+
+    let mut current_ranges = seeds.into_iter().tuples::<(_, _)>().collect_vec();
+
+    for map in maps {
+        current_ranges.sort_by_key(|(start, _)| *start);
+
+        let mut map_entry_index = 0;
+        let mut new_ranges = Vec::new();
+
+        for (mut current_range_start, mut current_range_length) in current_ranges {
+            while map_entry_index < map.len() {
+                let MapEntry {
+                    destination_range_start,
+                    source_range_start,
+                    range_length,
+                } = map[map_entry_index];
+
+                if current_range_start < source_range_start {
+                    if current_range_start + current_range_length <= source_range_start {
+                        // Current range is entirely before the source range
+                        new_ranges.push((current_range_start, current_range_length));
+                        current_range_start += current_range_length;
+                        current_range_length = 0;
+                    } else {
+                        // First part of current range is before the source range
+                        new_ranges.push((
+                            current_range_start,
+                            source_range_start - current_range_start,
+                        ));
+                        current_range_length -= source_range_start - current_range_start;
+                        current_range_start = source_range_start;
+                    }
+                } else if current_range_start < source_range_start + range_length {
+                    if current_range_start + current_range_length
+                        <= source_range_start + range_length
+                    {
+                        // Current range is entirely inside the source range
+                        new_ranges.push((
+                            destination_range_start + (current_range_start - source_range_start),
+                            current_range_length,
+                        ));
+                        current_range_start += current_range_length;
+                        current_range_length = 0;
+                    } else {
+                        // First part of current range is inside the source range
+                        new_ranges.push((
+                            destination_range_start + (current_range_start - source_range_start),
+                            source_range_start + range_length - current_range_start,
+                        ));
+                        current_range_length -=
+                            source_range_start + range_length - current_range_start;
+                        current_range_start = source_range_start + range_length;
+                    }
+                }
+
+                if current_range_length == 0 {
+                    break;
+                }
+
+                map_entry_index += 1;
+            }
+
+            if current_range_length > 0 {
+                // Current range is after all source ranges
+                new_ranges.push((current_range_start, current_range_length));
+            }
+        }
+
+        current_ranges = new_ranges;
+    }
+
+    current_ranges
+        .iter()
+        .map(|(range_start, _)| *range_start)
+        .min()
 }
 
 #[cfg(test)]
@@ -92,6 +172,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(46));
     }
 }
