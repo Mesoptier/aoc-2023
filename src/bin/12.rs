@@ -40,14 +40,14 @@ fn parse_input(input: &str) -> IResult<&str, Vec<(Vec<SpringCondition>, Vec<usiz
     )(input)
 }
 
-type Cache<'a> = HashMap<(&'a [SpringCondition], &'a [usize]), usize>;
+type Cache = HashMap<(usize, usize), usize>;
 
-fn count_arrangements<'a>(
-    row: &'a [SpringCondition],
-    damaged_groups: &'a [usize],
-    cache: &mut Cache<'a>,
+fn count_arrangements(
+    row: &[SpringCondition],
+    damaged_groups: &[usize],
+    cache: &mut Cache,
 ) -> usize {
-    if let Some(&count) = cache.get(&(row, damaged_groups)) {
+    if let Some(&count) = cache.get(&(row.len(), damaged_groups.len())) {
         return count;
     }
 
@@ -105,7 +105,7 @@ fn count_arrangements<'a>(
         sum += count_arrangements(&row[start + span..], &damaged_groups[1..], cache);
     }
 
-    cache.insert((row, damaged_groups), sum);
+    cache.insert((row.len(), damaged_groups.len()), sum);
 
     sum
 }
