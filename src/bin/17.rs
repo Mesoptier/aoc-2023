@@ -1,8 +1,9 @@
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
+
 advent_of_code::solution!(17);
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Copy, Clone)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Copy, Clone, Debug)]
 enum Direction {
     Up,
     Down,
@@ -21,7 +22,7 @@ impl Direction {
     }
 }
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Copy, Clone)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Copy, Clone, Debug)]
 struct State {
     x: usize,
     y: usize,
@@ -35,7 +36,7 @@ struct Entry {
     state: State,
 }
 
-pub fn part_one(input: &str) -> Option<u32> {
+fn solve(input: &str, ultra: bool) -> Option<u32> {
     let map: Vec<Vec<u32>> = input
         .lines()
         .map(|line| line.chars().map(|c| c.to_digit(10).unwrap()).collect())
@@ -44,17 +45,24 @@ pub fn part_one(input: &str) -> Option<u32> {
     let width = map[0].len();
     let height = map.len();
 
-    let initial_state = State {
-        x: 0,
-        y: 0,
-        direction: Direction::Down,
-        direction_steps: 0,
-    };
-
     let mut min_heap = BinaryHeap::<Reverse<Entry>>::new();
     min_heap.push(Reverse(Entry {
         cost: 0,
-        state: initial_state,
+        state: State {
+            x: 0,
+            y: 0,
+            direction: Direction::Down,
+            direction_steps: 0,
+        },
+    }));
+    min_heap.push(Reverse(Entry {
+        cost: 0,
+        state: State {
+            x: 0,
+            y: 0,
+            direction: Direction::Right,
+            direction_steps: 0,
+        },
     }));
 
     let mut best_costs = HashMap::<State, u32>::new();
@@ -62,7 +70,7 @@ pub fn part_one(input: &str) -> Option<u32> {
     while let Some(Reverse(entry)) = min_heap.pop() {
         let Entry { cost, state } = entry;
 
-        if state.x == width - 1 && state.y == height - 1 {
+        if state.x == width - 1 && state.y == height - 1 && (!ultra || state.direction_steps >= 4) {
             // Found the destination
             return Some(cost);
         }
@@ -94,9 +102,20 @@ pub fn part_one(input: &str) -> Option<u32> {
                 1
             };
 
-            if direction_steps > 3 {
-                // Can't go in the same direction for more than 3 steps
-                continue;
+            if !ultra {
+                if direction_steps > 3 {
+                    // Can't go in the same direction for more than 3 steps
+                    continue;
+                }
+            } else {
+                if direction_steps > 10 {
+                    // Can't go in the same direction for more than 10 steps
+                    continue;
+                }
+                if state.direction_steps < 4 && direction != state.direction {
+                    // Can't change direction before 3 steps
+                    continue;
+                }
             }
 
             let next_state = match direction {
@@ -140,8 +159,12 @@ pub fn part_one(input: &str) -> Option<u32> {
     None
 }
 
+pub fn part_one(input: &str) -> Option<u32> {
+    solve(input, false)
+}
+
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    solve(input, true)
 }
 
 #[cfg(test)]
@@ -157,6 +180,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(94));
     }
 }
