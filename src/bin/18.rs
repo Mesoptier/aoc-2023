@@ -1,14 +1,14 @@
 use itertools::Itertools;
 use nom::branch::alt;
-use nom::bytes::complete::tag;
-use nom::character::complete::{char, digit1, hex_digit1, space1};
+use nom::bytes::complete::{tag, take};
+use nom::character::complete::{char, digit1, space1};
 use nom::combinator::{all_consuming, map, map_res};
-use nom::sequence::{delimited, terminated, tuple};
+use nom::sequence::{delimited, separated_pair, tuple};
 use nom::IResult;
 
 advent_of_code::solution!(18);
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 enum Direction {
     Up,
     Down,
@@ -16,9 +16,9 @@ enum Direction {
     Right,
 }
 
-fn parse_entry(s: &str) -> IResult<&str, (Direction, usize, u32)> {
-    all_consuming(tuple((
-        terminated(
+fn parse_entry(s: &str) -> IResult<&str, ((Direction, usize), (Direction, usize))> {
+    all_consuming(separated_pair(
+        separated_pair(
             alt((
                 map(char('U'), |_| Direction::Up),
                 map(char('D'), |_| Direction::Down),
@@ -26,101 +26,162 @@ fn parse_entry(s: &str) -> IResult<&str, (Direction, usize, u32)> {
                 map(char('R'), |_| Direction::Right),
             )),
             space1,
+            map_res(digit1, str::parse),
         ),
-        terminated(map_res(digit1, str::parse), space1),
+        space1,
         delimited(
             tag("(#"),
-            map_res(hex_digit1, |s| u32::from_str_radix(s, 16)),
+            map(
+                tuple((
+                    map_res(take(5usize), |s: &str| usize::from_str_radix(s, 16)),
+                    alt((
+                        map(char('3'), |_| Direction::Up),
+                        map(char('1'), |_| Direction::Down),
+                        map(char('2'), |_| Direction::Left),
+                        map(char('0'), |_| Direction::Right),
+                    )),
+                )),
+                |(len, dir)| (dir, len),
+            ),
             char(')'),
         ),
-    )))(s)
+    ))(s)
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+enum EventType {
+    Start,
+    End,
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+struct Event {
+    x: isize,
+    y: isize,
+    event_type: EventType,
+}
+
+fn compute_interior(dig_plan: &[(Direction, usize)]) -> usize {
+    // Sweep line algorithm:
+    // - Events are start-/endpoints of the vertical line segments (oriented downwards) of the dig plan.
+    // - The state is the set of active vertical line segments and the current Y value.
+
+    let mut events = vec![];
+    let (mut x, mut y) = (0isize, 0isize);
+
+    for (dir, len) in dig_plan {
+        let (dx, dy) = match dir {
+            Direction::Up => (0, -1),
+            Direction::Down => (0, 1),
+            Direction::Left => (-1, 0),
+            Direction::Right => (1, 0),
+        };
+
+        match dir {
+            Direction::Up => {
+                events.push(Event {
+                    x,
+                    y: y - (*len as isize),
+                    event_type: EventType::Start,
+                });
+                events.push(Event {
+                    x,
+                    y,
+                    event_type: EventType::End,
+                });
+            }
+            Direction::Down => {
+                events.push(Event {
+                    x,
+                    y,
+                    event_type: EventType::Start,
+                });
+                events.push(Event {
+                    x,
+                    y: y + (*len as isize),
+                    event_type: EventType::End,
+                });
+            }
+            _ => {}
+        }
+
+        x += dx * (*len as isize);
+        y += dy * (*len as isize);
+    }
+
+    events.sort_by_key(|e| {
+        (
+            e.y,
+            e.x,
+            match e.event_type {
+                EventType::Start => 1,
+                EventType::End => 0,
+            },
+        )
+    });
+
+    let mut y = isize::MIN;
+    let mut endpoints = vec![];
+    let mut interior = 0;
+
+    for (event_y, grouped_events) in &events.into_iter().group_by(|e| e.y) {
+        let prev_endpoints = endpoints.clone();
+
+        // Update endpoints
+        for event in grouped_events {
+            match event.event_type {
+                EventType::Start => endpoints.push(event.x),
+                EventType::End => endpoints.retain(|&x| x != event.x),
+            }
+        }
+        endpoints.sort();
+
+        // How many X values are covered by the intervals bounded by endpoints
+        let mut x_span = 0;
+        // Overlap with next x_span
+        let mut x_span_overlap = 0;
+        for (prev_start, prev_end) in prev_endpoints.into_iter().tuples() {
+            x_span += prev_end - prev_start + 1;
+
+            for (&start, &end) in endpoints.iter().tuples() {
+                // Subtract overlap between previous and current intervals. This only works if the intervals in the two
+                // sets are disjoint, which is guaranteed by the sorting of endpoints.
+                if prev_start <= end && prev_end >= start {
+                    x_span_overlap += prev_end.min(end) - prev_start.max(start) + 1;
+                }
+            }
+        }
+
+        // How many Y values are covered since the previous event
+        let y_span = event_y.saturating_sub(y);
+
+        // Update interior
+        // - area of the rectangles covered since previous event
+        interior += (x_span * y_span) as usize;
+        // - compensate for overlap with next area
+        interior += (x_span - x_span_overlap) as usize;
+
+        // Update Y
+        y = event_y;
+    }
+
+    interior
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
     let dig_plan = input
         .lines()
-        .map(|s| parse_entry(s).unwrap().1)
+        .map(|s| parse_entry(s).unwrap().1 .0)
         .collect_vec();
-
-    // Determine the bounds of the grid
-    let (mut min_x, mut max_x, mut min_y, mut max_y) = (0, 0, 0, 0);
-    let (mut x, mut y) = (0, 0);
-    for (dir, len, _) in &dig_plan {
-        match dir {
-            Direction::Up => {
-                y -= *len as i32;
-                min_y = min_y.min(y);
-            }
-            Direction::Down => {
-                y += *len as i32;
-                max_y = max_y.max(y);
-            }
-            Direction::Left => {
-                x -= *len as i32;
-                min_x = min_x.min(x);
-            }
-            Direction::Right => {
-                x += *len as i32;
-                max_x = max_x.max(x);
-            }
-        }
-    }
-    let (width, height) = ((max_x - min_x + 1) as usize, (max_y - min_y + 1) as usize);
-    let (x0, y0) = (-min_x as usize, -min_y as usize);
-
-    // Add padding to the bounds, so we can easily flood fill the exterior
-    let (width, height) = (width + 2, height + 2);
-    let (x0, y0) = (x0 + 1, y0 + 1);
-
-    // Create the grid
-    let mut grid = vec![vec![false; width]; height];
-
-    // Draw the path
-    let (mut x, mut y) = (x0, y0);
-    for (dir, len, _color) in dig_plan {
-        let (dx, dy) = match dir {
-            Direction::Up => (0, usize::MAX),
-            Direction::Down => (0, 1),
-            Direction::Left => (usize::MAX, 0),
-            Direction::Right => (1, 0),
-        };
-        for _ in 0..len {
-            grid[y][x] = true;
-            x = x.wrapping_add(dx);
-            y = y.wrapping_add(dy);
-        }
-    }
-
-    // Flood fill the exterior cells
-    let mut queue = vec![(0, 0)];
-    let mut exterior = vec![vec![false; width]; height];
-    let mut num_exterior = 0;
-
-    while let Some((x, y)) = queue.pop() {
-        if exterior[y][x] {
-            continue;
-        }
-        exterior[y][x] = true;
-        num_exterior += 1;
-        if x > 0 && !grid[y][x - 1] {
-            queue.push((x - 1, y));
-        }
-        if x + 1 < width && !grid[y][x + 1] {
-            queue.push((x + 1, y));
-        }
-        if y > 0 && !grid[y - 1][x] {
-            queue.push((x, y - 1));
-        }
-        if y + 1 < height && !grid[y + 1][x] {
-            queue.push((x, y + 1));
-        }
-    }
-
-    Some(width * height - num_exterior)
+    Some(compute_interior(&dig_plan))
 }
 
-pub fn part_two(input: &str) -> Option<u32> {
-    None
+pub fn part_two(input: &str) -> Option<usize> {
+    let dig_plan = input
+        .lines()
+        .map(|s| parse_entry(s).unwrap().1 .1)
+        .collect_vec();
+    Some(compute_interior(&dig_plan))
 }
 
 #[cfg(test)]
