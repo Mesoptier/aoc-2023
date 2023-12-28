@@ -145,7 +145,7 @@ fn compute_interior(dig_plan: &[(Direction, usize)]) -> usize {
 
             for (&start, &end) in endpoints.iter().tuples() {
                 // Subtract overlap between previous and current intervals. This only works if the intervals in the two
-                // sets are disjoint, which is guaranteed by the sorting of endpoints.
+                // sets are internally disjoint, which is guaranteed by the sorting of endpoints.
                 if prev_start <= end && prev_end >= start {
                     x_span_overlap += prev_end.min(end) - prev_start.max(start) + 1;
                 }
