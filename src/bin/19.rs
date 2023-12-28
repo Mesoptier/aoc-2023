@@ -119,7 +119,6 @@ fn is_part_accepted(part: Part, workflows: &HashMap<&str, Workflow>) -> bool {
 
 pub fn part_one(input: &str) -> Option<u32> {
     let (_, (workflows, parts)) = parse_input(input).unwrap();
-
     let workflows = HashMap::<&str, Workflow>::from_iter(workflows);
     parts
         .into_iter()
@@ -128,8 +127,68 @@ pub fn part_one(input: &str) -> Option<u32> {
         .sum1()
 }
 
-pub fn part_two(input: &str) -> Option<u32> {
-    None
+#[derive(Copy, Clone, Debug)]
+struct Bound {
+    gt: u32,
+    lt: u32,
+}
+
+fn compute_accepted_combinations_for_bounds(bounds: [Bound; 4]) -> usize {
+    bounds
+        .iter()
+        .map(|Bound { gt, lt }| ((lt - 1) - (gt + 1) + 1) as usize)
+        .product::<usize>()
+}
+
+fn compute_accepted_combinations(
+    workflows: &HashMap<&str, Workflow>,
+    label: &str,
+    mut bounds: [Bound; 4],
+) -> usize {
+    let mut result = 0;
+    let workflow = workflows.get(label).unwrap();
+    for (condition, target) in &workflow.rules {
+        let mut rule_bounds = bounds;
+
+        match condition {
+            Condition::Gt(property, gt) => {
+                if bounds[*property].lt - 1 < *gt + 1 {
+                    // Rule cannot match, skip
+                    continue;
+                }
+                rule_bounds[*property].gt = *gt;
+                bounds[*property].lt = *gt + 1;
+            }
+            Condition::Lt(property, lt) => {
+                if bounds[*property].gt + 1 > *lt - 1 {
+                    // Rule cannot match, skip
+                    continue;
+                }
+                rule_bounds[*property].lt = *lt;
+                bounds[*property].gt = *lt - 1;
+            }
+        }
+
+        result += match target {
+            Target::Workflow(label) => compute_accepted_combinations(workflows, label, rule_bounds),
+            Target::Accept => compute_accepted_combinations_for_bounds(rule_bounds),
+            Target::Reject => 0,
+        };
+    }
+
+    result += match workflow.fallback {
+        Target::Workflow(label) => compute_accepted_combinations(workflows, label, bounds),
+        Target::Accept => compute_accepted_combinations_for_bounds(bounds),
+        Target::Reject => 0,
+    };
+
+    result
+}
+
+pub fn part_two(input: &str) -> Option<usize> {
+    let (_, (workflows, _)) = parse_input(input).unwrap();
+    let workflows = HashMap::<&str, Workflow>::from_iter(workflows);
+    compute_accepted_combinations(&workflows, "in", [Bound { gt: 0, lt: 4001 }; 4]).into()
 }
 
 #[cfg(test)]
@@ -145,6 +204,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(167409079868000));
     }
 }
