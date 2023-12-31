@@ -139,7 +139,9 @@ impl Module for FlipFlopModule {
 struct ConjunctionModule {
     label: usize,
     destinations: Vec<usize>,
-    inputs: HashMap<usize, bool>,
+    /// A bit vector where each bit represents whether the last pulse from that was high or low. This assumes that the
+    /// number of inputs is less than the number of bits in usize.
+    inputs: usize,
 }
 
 impl ConjunctionModule {
@@ -147,16 +149,29 @@ impl ConjunctionModule {
         Self {
             label,
             destinations,
-            inputs: inputs.into_iter().map(|input| (input, false)).collect(),
+            inputs: {
+                let mut values = usize::MAX;
+                for idx in inputs {
+                    // Unset the bit at idx
+                    values &= !(1 << idx);
+                }
+                values
+            },
         }
     }
 }
 
 impl Module for ConjunctionModule {
     fn receive_pulse(&mut self, pulse: Pulse) -> Vec<Pulse> {
-        *self.inputs.get_mut(&pulse.source).unwrap() = pulse.is_high;
+        if pulse.is_high {
+            // Set the bit at idx
+            self.inputs |= 1 << pulse.source;
+        } else {
+            // Unset the bit at idx
+            self.inputs &= !(1 << pulse.source);
+        }
 
-        let is_high = self.inputs.values().all(|&is_high| is_high);
+        let is_high = self.inputs == usize::MAX;
         self.destinations
             .iter()
             .map(|destination| Pulse {
