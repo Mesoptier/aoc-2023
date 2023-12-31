@@ -1,6 +1,7 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Display;
 
+use itertools::Itertools;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{alpha1, line_ending};
@@ -19,13 +20,13 @@ enum ModuleType {
 }
 
 #[derive(Debug)]
-struct ModuleSpec {
-    label: String,
+struct ModuleSpec<T> {
+    label: T,
     module_type: ModuleType,
-    destinations: Vec<String>,
+    destinations: Vec<T>,
 }
 
-fn parse_input(input: &str) -> IResult<&str, Vec<ModuleSpec>> {
+fn parse_input(input: &str) -> IResult<&str, Vec<ModuleSpec<String>>> {
     separated_list1(
         line_ending,
         map(
@@ -53,8 +54,8 @@ fn parse_input(input: &str) -> IResult<&str, Vec<ModuleSpec>> {
 
 #[derive(Clone)]
 struct Pulse {
-    source: String,
-    destination: String,
+    source: usize,
+    destination: usize,
     is_high: bool,
 }
 
@@ -75,12 +76,12 @@ trait Module {
 }
 
 struct BroadcastModule {
-    label: String,
-    destinations: Vec<String>,
+    label: usize,
+    destinations: Vec<usize>,
 }
 
 impl BroadcastModule {
-    fn new(label: String, destinations: Vec<String>) -> Self {
+    fn new(label: usize, destinations: Vec<usize>) -> Self {
         Self {
             label,
             destinations,
@@ -102,13 +103,13 @@ impl Module for BroadcastModule {
 }
 
 struct FlipFlopModule {
-    label: String,
-    destinations: Vec<String>,
+    label: usize,
+    destinations: Vec<usize>,
     is_high: bool,
 }
 
 impl FlipFlopModule {
-    fn new(label: String, destinations: Vec<String>) -> Self {
+    fn new(label: usize, destinations: Vec<usize>) -> Self {
         Self {
             label,
             destinations,
@@ -136,13 +137,13 @@ impl Module for FlipFlopModule {
 }
 
 struct ConjunctionModule {
-    label: String,
-    destinations: Vec<String>,
-    inputs: HashMap<String, bool>,
+    label: usize,
+    destinations: Vec<usize>,
+    inputs: HashMap<usize, bool>,
 }
 
 impl ConjunctionModule {
-    fn new(label: String, destinations: Vec<String>, inputs: Vec<String>) -> Self {
+    fn new(label: usize, destinations: Vec<usize>, inputs: Vec<usize>) -> Self {
         Self {
             label,
             destinations,
@@ -167,55 +168,103 @@ impl Module for ConjunctionModule {
     }
 }
 
-pub fn part_one(input: &str) -> Option<u32> {
+fn initialize_modules(input: &str) -> (HashMap<String, usize>, Vec<Box<dyn Module>>) {
     let (_, module_specs) = parse_input(input).unwrap();
 
-    let reverse_adjacency_list: HashMap<String, Vec<String>> = module_specs
+    let source_labels = module_specs
+        .iter()
+        .map(|spec| spec.label.clone())
+        .collect::<HashSet<_>>();
+    let destination_labels = module_specs
+        .iter()
+        .flat_map(|spec| spec.destinations.clone())
+        .collect::<HashSet<_>>();
+    let destination_labels = destination_labels
+        .difference(&source_labels)
+        .cloned()
+        .collect_vec();
+    let source_labels = source_labels.iter().cloned().collect_vec();
+
+    let label_to_id = HashMap::<String, usize>::from_iter(
+        source_labels
+            .iter()
+            .chain(destination_labels.iter())
+            .enumerate()
+            .map(|(id, label)| (label.clone(), id)),
+    );
+
+    let mut module_specs = module_specs
+        .into_iter()
+        .map(|spec| {
+            let id = label_to_id[&spec.label];
+            let destinations = spec
+                .destinations
+                .into_iter()
+                .map(|destination| label_to_id[&destination])
+                .collect();
+            ModuleSpec {
+                label: id,
+                module_type: spec.module_type,
+                destinations,
+            }
+        })
+        .collect_vec();
+
+    let reverse_adjacency_list: Vec<Vec<usize>> = module_specs
         .iter()
         .flat_map(|module_spec| {
             module_spec
                 .destinations
                 .iter()
-                .map(move |destination| (destination.clone(), module_spec.label.clone()))
+                .map(move |destination| (*destination, module_spec.label))
         })
-        .fold(HashMap::new(), |mut map, (destination, source)| {
-            map.entry(destination).or_default().push(source);
-            map
-        });
+        .fold(
+            vec![vec![]; label_to_id.len()],
+            |mut map, (destination, source)| {
+                map[destination].push(source);
+                map
+            },
+        );
 
-    // TODO: Use enum dispatch instead of Box<dyn Module>
-    let mut modules = HashMap::<String, Box<dyn Module>>::from_iter(module_specs.iter().map(
-        |module_spec| -> (String, Box<dyn Module>) {
-            (
-                module_spec.label.clone(),
-                match module_spec.module_type {
-                    ModuleType::Broadcast => Box::new(BroadcastModule::new(
-                        module_spec.label.clone(),
-                        module_spec.destinations.clone(),
-                    )),
-                    ModuleType::FlipFlop => Box::new(FlipFlopModule::new(
-                        module_spec.label.clone(),
-                        module_spec.destinations.clone(),
-                    )),
-                    ModuleType::Conjunction => Box::new(ConjunctionModule::new(
-                        module_spec.label.clone(),
-                        module_spec.destinations.clone(),
-                        reverse_adjacency_list[&module_spec.label].clone(),
-                    )),
-                },
-            )
-        },
-    ));
+    module_specs.sort_by_key(|spec| spec.label);
+    let modules = module_specs
+        .into_iter()
+        .map(|module_spec| -> Box<dyn Module> {
+            match module_spec.module_type {
+                ModuleType::Broadcast => Box::new(BroadcastModule::new(
+                    module_spec.label,
+                    module_spec.destinations.iter().map(|&id| id).collect(),
+                )),
+                ModuleType::FlipFlop => Box::new(FlipFlopModule::new(
+                    module_spec.label,
+                    module_spec.destinations.iter().map(|&id| id).collect(),
+                )),
+                ModuleType::Conjunction => Box::new(ConjunctionModule::new(
+                    module_spec.label,
+                    module_spec.destinations.iter().map(|&id| id).collect(),
+                    reverse_adjacency_list[module_spec.label].clone(),
+                )),
+            }
+        })
+        .collect_vec();
+
+    (label_to_id, modules)
+}
+
+pub fn part_one(input: &str) -> Option<u32> {
+    let (label_to_id, mut modules) = initialize_modules(input);
 
     let mut queue = VecDeque::new();
 
     let mut low_pulses_sent = 0;
     let mut high_pulses_sent = 0;
 
+    let broadcaster_id = label_to_id["broadcaster"];
+
     for _ in 0..1000 {
         queue.push_back(Pulse {
-            source: "button".to_string(),
-            destination: "broadcaster".to_string(),
+            source: usize::MAX,
+            destination: broadcaster_id,
             is_high: false,
         });
 
@@ -225,7 +274,7 @@ pub fn part_one(input: &str) -> Option<u32> {
                 false => low_pulses_sent += 1,
             };
 
-            if let Some(module) = modules.get_mut(&pulse.destination) {
+            if let Some(module) = modules.get_mut(pulse.destination) {
                 let pulses = module.receive_pulse(pulse);
                 queue.extend(pulses);
             }
