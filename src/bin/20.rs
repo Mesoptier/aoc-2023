@@ -300,7 +300,38 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    let (label_to_id, mut modules) = initialize_modules(input);
+
+    let mut queue = VecDeque::new();
+
+    let mut button_presses = 0;
+
+    let broadcaster_id = label_to_id["broadcaster"];
+    let rx_id = label_to_id["rx"];
+
+    loop {
+        queue.push_back(Pulse {
+            source: usize::MAX,
+            destination: broadcaster_id,
+            is_high: false,
+        });
+        button_presses += 1;
+
+        if button_presses % 1_000_000 == 0 {
+            println!("{} button presses", button_presses);
+        }
+
+        while let Some(pulse) = queue.pop_front() {
+            if pulse.destination == rx_id && !pulse.is_high {
+                return Some(button_presses);
+            }
+
+            if let Some(module) = modules.get_mut(pulse.destination) {
+                let pulses = module.receive_pulse(pulse);
+                queue.extend(pulses);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
