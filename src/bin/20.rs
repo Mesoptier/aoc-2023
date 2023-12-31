@@ -1,3 +1,4 @@
+use enum_dispatch::enum_dispatch;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Display;
 
@@ -71,8 +72,16 @@ impl Display for Pulse {
     }
 }
 
-trait Module {
-    fn receive_pulse(&mut self, pulse: Pulse) -> Vec<Pulse>;
+#[enum_dispatch(PulseReceiver)]
+enum Module {
+    Broadcast(BroadcastModule),
+    FlipFlop(FlipFlopModule),
+    Conjunction(ConjunctionModule),
+}
+
+#[enum_dispatch]
+trait PulseReceiver {
+    fn receive_pulse(&mut self, pulse: Pulse, queue: &mut VecDeque<Pulse>);
 }
 
 struct BroadcastModule {
@@ -89,16 +98,13 @@ impl BroadcastModule {
     }
 }
 
-impl Module for BroadcastModule {
-    fn receive_pulse(&mut self, pulse: Pulse) -> Vec<Pulse> {
-        self.destinations
-            .iter()
-            .map(|destination| Pulse {
-                source: self.label,
-                destination: *destination,
-                is_high: pulse.is_high,
-            })
-            .collect()
+impl PulseReceiver for BroadcastModule {
+    fn receive_pulse(&mut self, pulse: Pulse, queue: &mut VecDeque<Pulse>) {
+        queue.extend(self.destinations.iter().map(|destination| Pulse {
+            source: self.label,
+            destination: *destination,
+            is_high: pulse.is_high,
+        }));
     }
 }
 
@@ -118,29 +124,26 @@ impl FlipFlopModule {
     }
 }
 
-impl Module for FlipFlopModule {
-    fn receive_pulse(&mut self, pulse: Pulse) -> Vec<Pulse> {
+impl PulseReceiver for FlipFlopModule {
+    fn receive_pulse(&mut self, pulse: Pulse, queue: &mut VecDeque<Pulse>) {
         if pulse.is_high {
-            return vec![];
+            return;
         }
 
         self.is_high = !self.is_high;
-        self.destinations
-            .iter()
-            .map(|destination| Pulse {
-                source: self.label,
-                destination: *destination,
-                is_high: self.is_high,
-            })
-            .collect()
+        queue.extend(self.destinations.iter().map(|destination| Pulse {
+            source: self.label,
+            destination: *destination,
+            is_high: self.is_high,
+        }));
     }
 }
 
 struct ConjunctionModule {
     label: usize,
     destinations: Vec<usize>,
-    /// A bit vector where each bit represents whether the last pulse from that was high or low. This assumes that the
-    /// number of inputs is less than the number of bits in usize.
+    /// A bit vector where each bit represents whether the last pulse from that module was high or low. This assumes
+    /// that the total number of modules is less than the number of bits in usize.
     inputs: usize,
 }
 
@@ -161,29 +164,24 @@ impl ConjunctionModule {
     }
 }
 
-impl Module for ConjunctionModule {
-    fn receive_pulse(&mut self, pulse: Pulse) -> Vec<Pulse> {
+impl PulseReceiver for ConjunctionModule {
+    fn receive_pulse(&mut self, pulse: Pulse, queue: &mut VecDeque<Pulse>) {
         if pulse.is_high {
-            // Set the bit at idx
             self.inputs |= 1 << pulse.source;
         } else {
-            // Unset the bit at idx
             self.inputs &= !(1 << pulse.source);
         }
 
         let is_high = self.inputs == usize::MAX;
-        self.destinations
-            .iter()
-            .map(|destination| Pulse {
-                source: self.label,
-                destination: *destination,
-                is_high: !is_high,
-            })
-            .collect()
+        queue.extend(self.destinations.iter().map(|destination| Pulse {
+            source: self.label,
+            destination: *destination,
+            is_high: !is_high,
+        }))
     }
 }
 
-fn initialize_modules(input: &str) -> (HashMap<String, usize>, Vec<Box<dyn Module>>) {
+fn initialize_modules(input: &str) -> (HashMap<String, usize>, Vec<Module>) {
     let (_, module_specs) = parse_input(input).unwrap();
 
     let source_labels = module_specs
@@ -244,21 +242,21 @@ fn initialize_modules(input: &str) -> (HashMap<String, usize>, Vec<Box<dyn Modul
     module_specs.sort_by_key(|spec| spec.label);
     let modules = module_specs
         .into_iter()
-        .map(|module_spec| -> Box<dyn Module> {
+        .map(|module_spec| -> Module {
             match module_spec.module_type {
-                ModuleType::Broadcast => Box::new(BroadcastModule::new(
-                    module_spec.label,
-                    module_spec.destinations.to_vec(),
-                )),
-                ModuleType::FlipFlop => Box::new(FlipFlopModule::new(
-                    module_spec.label,
-                    module_spec.destinations.to_vec(),
-                )),
-                ModuleType::Conjunction => Box::new(ConjunctionModule::new(
+                ModuleType::Broadcast => {
+                    BroadcastModule::new(module_spec.label, module_spec.destinations.to_vec())
+                        .into()
+                }
+                ModuleType::FlipFlop => {
+                    FlipFlopModule::new(module_spec.label, module_spec.destinations.to_vec()).into()
+                }
+                ModuleType::Conjunction => ConjunctionModule::new(
                     module_spec.label,
                     module_spec.destinations.to_vec(),
                     reverse_adjacency_list[module_spec.label].clone(),
-                )),
+                )
+                .into(),
             }
         })
         .collect_vec();
@@ -290,8 +288,7 @@ pub fn part_one(input: &str) -> Option<u32> {
             };
 
             if let Some(module) = modules.get_mut(pulse.destination) {
-                let pulses = module.receive_pulse(pulse);
-                queue.extend(pulses);
+                module.receive_pulse(pulse, &mut queue);
             }
         }
     }
@@ -327,8 +324,7 @@ pub fn part_two(input: &str) -> Option<u32> {
             }
 
             if let Some(module) = modules.get_mut(pulse.destination) {
-                let pulses = module.receive_pulse(pulse);
-                queue.extend(pulses);
+                module.receive_pulse(pulse, &mut queue);
             }
         }
     }
