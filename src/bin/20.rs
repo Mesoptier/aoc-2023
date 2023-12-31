@@ -94,8 +94,8 @@ impl Module for BroadcastModule {
         self.destinations
             .iter()
             .map(|destination| Pulse {
-                source: self.label.clone(),
-                destination: destination.clone(),
+                source: self.label,
+                destination: *destination,
                 is_high: pulse.is_high,
             })
             .collect()
@@ -128,8 +128,8 @@ impl Module for FlipFlopModule {
         self.destinations
             .iter()
             .map(|destination| Pulse {
-                source: self.label.clone(),
-                destination: destination.clone(),
+                source: self.label,
+                destination: *destination,
                 is_high: self.is_high,
             })
             .collect()
@@ -160,8 +160,8 @@ impl Module for ConjunctionModule {
         self.destinations
             .iter()
             .map(|destination| Pulse {
-                source: self.label.clone(),
-                destination: destination.clone(),
+                source: self.label,
+                destination: *destination,
                 is_high: !is_high,
             })
             .collect()
@@ -233,15 +233,15 @@ fn initialize_modules(input: &str) -> (HashMap<String, usize>, Vec<Box<dyn Modul
             match module_spec.module_type {
                 ModuleType::Broadcast => Box::new(BroadcastModule::new(
                     module_spec.label,
-                    module_spec.destinations.iter().map(|&id| id).collect(),
+                    module_spec.destinations.to_vec(),
                 )),
                 ModuleType::FlipFlop => Box::new(FlipFlopModule::new(
                     module_spec.label,
-                    module_spec.destinations.iter().map(|&id| id).collect(),
+                    module_spec.destinations.to_vec(),
                 )),
                 ModuleType::Conjunction => Box::new(ConjunctionModule::new(
                     module_spec.label,
-                    module_spec.destinations.iter().map(|&id| id).collect(),
+                    module_spec.destinations.to_vec(),
                     reverse_adjacency_list[module_spec.label].clone(),
                 )),
             }
