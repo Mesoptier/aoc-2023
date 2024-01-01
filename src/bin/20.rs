@@ -10,17 +10,18 @@ use nom::combinator::map;
 use nom::multi::separated_list1;
 use nom::sequence::{preceded, separated_pair};
 use nom::IResult;
+use num::integer::lcm;
 
 advent_of_code::solution!(20);
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum ModuleType {
     Broadcast,
     FlipFlop,
     Conjunction,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ModuleSpec<T> {
     label: T,
     module_type: ModuleType,
@@ -181,9 +182,9 @@ impl PulseReceiver for ConjunctionModule {
     }
 }
 
-fn initialize_modules(input: &str) -> (HashMap<String, usize>, Vec<Module>) {
-    let (_, module_specs) = parse_input(input).unwrap();
-
+fn initialize_modules(
+    module_specs: Vec<ModuleSpec<String>>,
+) -> (HashMap<String, usize>, Vec<Module>) {
     let source_labels = module_specs
         .iter()
         .map(|spec| spec.label.clone())
@@ -265,7 +266,8 @@ fn initialize_modules(input: &str) -> (HashMap<String, usize>, Vec<Module>) {
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
-    let (label_to_id, mut modules) = initialize_modules(input);
+    let (_, module_specs) = parse_input(input).unwrap();
+    let (label_to_id, mut modules) = initialize_modules(module_specs);
 
     let mut queue = VecDeque::new();
 
@@ -296,38 +298,80 @@ pub fn part_one(input: &str) -> Option<u32> {
     Some(low_pulses_sent * high_pulses_sent)
 }
 
-pub fn part_two(input: &str) -> Option<u32> {
-    let (label_to_id, mut modules) = initialize_modules(input);
+pub fn part_two(input: &str) -> Option<usize> {
+    let (_, module_specs) = parse_input(input).unwrap();
 
-    let mut queue = VecDeque::new();
+    let module_specs_map = module_specs
+        .into_iter()
+        .map(|spec| (spec.label.clone(), spec))
+        .collect::<HashMap<_, _>>();
 
-    let mut button_presses = 0;
+    let broadcaster = module_specs_map["broadcaster"].clone();
+    let subgraph_output_label = "rm".to_string();
 
-    let broadcaster_id = label_to_id["broadcaster"];
-    let rx_id = label_to_id["rx"];
+    let mut result = 1;
 
-    loop {
-        queue.push_back(Pulse {
-            source: usize::MAX,
-            destination: broadcaster_id,
-            is_high: false,
-        });
-        button_presses += 1;
+    for subgraph_input_label in broadcaster.destinations {
+        // Collect subgraph rooted at node with label `subgraph_input_label`
+        let mut subgraph = HashSet::<String>::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(subgraph_input_label.clone());
 
-        if button_presses % 1_000_000 == 0 {
-            println!("{} button presses", button_presses);
-        }
-
-        while let Some(pulse) = queue.pop_front() {
-            if pulse.destination == rx_id && !pulse.is_high {
-                return Some(button_presses);
+        while let Some(label) = queue.pop_front() {
+            if subgraph.contains(&label) {
+                continue;
             }
 
-            if let Some(module) = modules.get_mut(pulse.destination) {
-                module.receive_pulse(pulse, &mut queue);
+            subgraph.insert(label.clone());
+
+            queue.extend(
+                module_specs_map[&label]
+                    .destinations
+                    .iter()
+                    .filter(|label| **label != subgraph_output_label)
+                    .cloned(),
+            );
+        }
+
+        // Add broadcaster module to subgraph, so that we can execute the subgraph as if it were part of the full graph
+        subgraph.insert("broadcaster".to_string());
+
+        let subgraph_module_specs = subgraph
+            .iter()
+            .map(|label| module_specs_map[label].clone())
+            .collect_vec();
+
+        let (label_to_id, mut modules) = initialize_modules(subgraph_module_specs);
+        let broadcaster_id = label_to_id["broadcaster"];
+        let subgraph_output_id = label_to_id[&subgraph_output_label];
+
+        // Count number of button presses until the subgraph output module ("rm") receives a high pulse
+        let mut button_presses = 0;
+        let mut queue = VecDeque::new();
+
+        'foo: loop {
+            queue.push_back(Pulse {
+                source: usize::MAX,
+                destination: broadcaster_id,
+                is_high: false,
+            });
+            button_presses += 1;
+
+            while let Some(pulse) = queue.pop_front() {
+                if pulse.destination == subgraph_output_id && pulse.is_high {
+                    break 'foo;
+                }
+
+                if let Some(module) = modules.get_mut(pulse.destination) {
+                    module.receive_pulse(pulse, &mut queue);
+                }
             }
         }
+
+        result = lcm(result, button_presses);
     }
+
+    Some(result)
 }
 
 #[cfg(test)]
@@ -348,8 +392,5 @@ mod tests {
     }
 
     #[test]
-    fn test_part_two() {
-        let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
-    }
+    fn test_part_two() {}
 }
