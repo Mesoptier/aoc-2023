@@ -19,8 +19,7 @@ fn parse_coord(input: &str) -> IResult<&str, [usize; 3]> {
     Ok((input, [x, y, z]))
 }
 
-pub fn part_one(input: &str) -> Option<u32> {
-    let (_, bricks) = parse_input(input).unwrap();
+fn build_empty_grid(bricks: &[([usize; 3], [usize; 3])]) -> Vec<Vec<Vec<bool>>> {
     let [max_x, max_y, max_z] = bricks.iter().fold(
         [0, 0, 0],
         |[max_x, max_y, max_z], ([x, y, z], [x2, y2, z2])| {
@@ -41,6 +40,47 @@ pub fn part_one(input: &str) -> Option<u32> {
         }
     }
 
+    grid
+}
+
+fn is_resting(grid: &Vec<Vec<Vec<bool>>>, brick_lo: [usize; 3], brick_hi: [usize; 3]) -> bool {
+    let [x_lo, y_lo, z_lo] = brick_lo;
+    let [x_hi, y_hi, _] = brick_hi;
+
+    for x in x_lo..=x_hi {
+        for y in y_lo..=y_hi {
+            if grid[x][y][z_lo - 1] {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn mark_grid(
+    grid: &mut Vec<Vec<Vec<bool>>>,
+    brick_lo: [usize; 3],
+    brick_hi: [usize; 3],
+    state: bool,
+) {
+    let [x_lo, y_lo, z_lo] = brick_lo;
+    let [x_hi, y_hi, z_hi] = brick_hi;
+
+    for x in x_lo..=x_hi {
+        for y in y_lo..=y_hi {
+            for z in z_lo..=z_hi {
+                grid[x][y][z] = state;
+            }
+        }
+    }
+}
+
+pub fn part_one(input: &str) -> Option<u32> {
+    let (_, bricks) = parse_input(input).unwrap();
+
+    let mut grid = build_empty_grid(&bricks);
+
     let mut falling_bricks = bricks;
     let mut resting_bricks = Vec::new();
 
@@ -49,33 +89,14 @@ pub fn part_one(input: &str) -> Option<u32> {
     while !falling_bricks.is_empty() {
         // Remove resting bricks from falling bricks
         falling_bricks.retain(|&(brick_lo, brick_hi)| {
-            let [x_lo, y_lo, z_lo] = brick_lo;
-            let [x_hi, y_hi, z_hi] = brick_hi;
-
-            let mut is_resting = false;
-
-            'outer: for x in x_lo..=x_hi {
-                for y in y_lo..=y_hi {
-                    if grid[x][y][z_lo - 1] {
-                        is_resting = true;
-                        break 'outer;
-                    }
-                }
-            }
-
-            if is_resting {
-                // Mark brick as resting
+            if is_resting(&grid, brick_lo, brick_hi) {
                 resting_bricks.push((brick_lo, brick_hi));
-                for x in x_lo..=x_hi {
-                    for y in y_lo..=y_hi {
-                        for z in z_lo..=z_hi {
-                            grid[x][y][z] = true;
-                        }
-                    }
-                }
-            }
+                mark_grid(&mut grid, brick_lo, brick_hi, true);
 
-            !is_resting
+                false
+            } else {
+                true
+            }
         });
 
         // Move falling bricks down
@@ -91,31 +112,12 @@ pub fn part_one(input: &str) -> Option<u32> {
     let result = resting_bricks
         .iter()
         .filter(|(brick_lo, brick_hi)| {
-            let [x_lo, y_lo, z_lo] = *brick_lo;
-            let [x_hi, y_hi, z_hi] = *brick_hi;
-
             let mut grid = grid.clone();
-            for x in x_lo..=x_hi {
-                for y in y_lo..=y_hi {
-                    for z in z_lo..=z_hi {
-                        grid[x][y][z] = false;
-                    }
-                }
-            }
+            mark_grid(&mut grid, *brick_lo, *brick_hi, false);
 
-            resting_bricks.iter().all(|(brick_lo, brick_hi)| {
-                let [x_lo, y_lo, z_lo] = *brick_lo;
-                let [x_hi, y_hi, _] = *brick_hi;
-
-                for x in x_lo..=x_hi {
-                    for y in y_lo..=y_hi {
-                        if grid[x][y][z_lo - 1] {
-                            return true;
-                        }
-                    }
-                }
-                false
-            })
+            resting_bricks
+                .iter()
+                .all(|(brick_lo, brick_hi)| is_resting(&grid, *brick_lo, *brick_hi))
         })
         .count();
 
