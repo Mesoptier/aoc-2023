@@ -3,6 +3,7 @@ use nom::combinator::map_res;
 use nom::multi::separated_list1;
 use nom::sequence::{preceded, separated_pair};
 use nom::IResult;
+
 advent_of_code::solution!(22);
 
 fn parse_input(input: &str) -> IResult<&str, Vec<([usize; 3], [usize; 3])>> {
@@ -125,7 +126,60 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    let (_, bricks) = parse_input(input).unwrap();
+
+    let mut grid = build_empty_grid(&bricks);
+
+    let mut falling_bricks = bricks;
+    let mut resting_bricks = Vec::new();
+
+    falling_bricks.sort_unstable_by_key(|&([_, _, z_lo], _)| z_lo);
+
+    while !falling_bricks.is_empty() {
+        // Remove resting bricks from falling bricks
+        falling_bricks.retain(|&(brick_lo, brick_hi)| {
+            if is_resting(&grid, brick_lo, brick_hi) {
+                resting_bricks.push((brick_lo, brick_hi));
+                mark_grid(&mut grid, brick_lo, brick_hi, true);
+
+                false
+            } else {
+                true
+            }
+        });
+
+        // Move falling bricks down
+        for (brick_lo, brick_hi) in &mut falling_bricks {
+            let [x_lo, y_lo, z_lo] = *brick_lo;
+            let [x_hi, y_hi, z_hi] = *brick_hi;
+            *brick_lo = [x_lo, y_lo, z_lo - 1];
+            *brick_hi = [x_hi, y_hi, z_hi - 1];
+        }
+    }
+
+    (0..resting_bricks.len())
+        .map(|i| {
+            let mut grid = build_empty_grid(&resting_bricks);
+
+            let mut falling_bricks = resting_bricks.clone();
+            falling_bricks.remove(i);
+
+            // Count non-resting bricks
+            falling_bricks
+                .into_iter()
+                .filter(|&(brick_lo, brick_hi)| {
+                    if is_resting(&grid, brick_lo, brick_hi) {
+                        mark_grid(&mut grid, brick_lo, brick_hi, true);
+
+                        false
+                    } else {
+                        true
+                    }
+                })
+                .count() as u32
+        })
+        .sum::<u32>()
+        .into()
 }
 
 #[cfg(test)]
@@ -141,6 +195,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(7));
     }
 }
