@@ -1,5 +1,6 @@
 use arrayvec::ArrayVec;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::iter::once;
 advent_of_code::solution!(23);
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -50,6 +51,26 @@ impl TryFrom<char> for Tile {
             '<' => Ok(Tile::Slope(Direction::West)),
             _ => Err(()),
         }
+    }
+}
+
+struct BitSet(usize);
+
+impl BitSet {
+    fn new() -> Self {
+        BitSet(0)
+    }
+
+    fn contains(&self, index: usize) -> bool {
+        self.0 & (1 << index) != 0
+    }
+
+    fn insert(&mut self, index: usize) {
+        self.0 |= 1 << index;
+    }
+
+    fn remove(&mut self, index: usize) {
+        self.0 &= !(1 << index);
     }
 }
 
@@ -157,36 +178,61 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
         }
     }
 
+    // Convert the node coordinates to indices, for faster lookup
+    type NodeIndex = usize;
+    type TrailsIndexMap = Vec<ArrayVec<(NodeIndex, u32), 12>>;
+    let node_map = trails_map
+        .keys()
+        .chain(once(&target_node))
+        .enumerate()
+        .map(|(index, &node)| (node, index))
+        .collect::<HashMap<_, _>>();
+    let trails_map: TrailsIndexMap = {
+        let mut result = vec![ArrayVec::new(); trails_map.len()];
+        for (node, trails) in trails_map {
+            let node_index = node_map[&node];
+            result[node_index].extend(
+                trails
+                    .into_iter()
+                    .map(|(node, steps)| (node_map[&node], steps)),
+            )
+        }
+        result
+    };
+    let start_node = node_map[&start_node];
+    let target_node = node_map[&target_node];
+
     // Find the longest hike from the start to the target, without visiting any node twice
     fn find_longest_hike(
-        node: Node,
-        target_node: Node,
-        trails: &TrailsMap,
-        visited: &mut HashSet<Node>,
+        node: NodeIndex,
+        target_node: NodeIndex,
+        trails_map: &TrailsIndexMap,
+        visited: &mut BitSet,
     ) -> Option<u32> {
         if node == target_node {
             // We've reached the target node
             return Some(0);
         }
 
-        if !visited.insert(node) {
+        if visited.contains(node) {
             // We've already visited this node, so we can't continue exploring
             return None;
         }
+        visited.insert(node);
 
-        let result = trails[&node]
+        let result = trails_map[node]
             .iter()
             .filter_map(|&(next_node, steps)| {
-                find_longest_hike(next_node, target_node, trails, visited)
+                find_longest_hike(next_node, target_node, trails_map, visited)
                     .map(|next_steps| next_steps + steps)
             })
             .max();
 
-        visited.remove(&node);
+        visited.remove(node);
         result
     }
 
-    find_longest_hike(start_node, target_node, &trails_map, &mut HashSet::new())
+    find_longest_hike(start_node, target_node, &trails_map, &mut BitSet::new())
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
