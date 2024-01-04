@@ -3,7 +3,8 @@ use nom::character::complete::{char, i64, line_ending, space1};
 use nom::combinator::{map, map_res};
 use nom::multi::separated_list1;
 use nom::sequence::{delimited, separated_pair, tuple};
-use nom::{IResult, Parser};
+use nom::IResult;
+use std::fmt::Write;
 
 advent_of_code::solution!(24);
 
@@ -29,7 +30,7 @@ fn parse_vector(input: &str) -> IResult<&str, Vec3> {
     )(input)
 }
 
-fn solve(input: &str, min_pos: f64, max_pos: f64) -> Option<usize> {
+fn solve_part_one(input: &str, min_pos: f64, max_pos: f64) -> Option<usize> {
     let (_, hailstones) = parse_input(input).unwrap();
 
     hailstones
@@ -93,10 +94,42 @@ fn solve(input: &str, min_pos: f64, max_pos: f64) -> Option<usize> {
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
-    solve(input, 200_000_000_000_000., 400_000_000_000_000.)
+    solve_part_one(input, 200_000_000_000_000., 400_000_000_000_000.)
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
+    let (_, hailstones) = parse_input(input).unwrap();
+
+    // Find (pos, vel) such that for every (pos_i, vel_i) in hailstones there exists a t_i such that:
+    // pos + vel * t_i = pos_i + vel_i * t_i
+
+    for dc in ['x', 'y', 'z'] {
+        println!("(declare-const pos_{} Int)", dc);
+        println!("(declare-const vel_{} Int)", dc);
+    }
+
+    hailstones
+        .into_iter()
+        .enumerate()
+        .for_each(|(i, (pos, vel))| {
+            println!("(declare-const t_{} Int)", i);
+
+            for (di, dc) in ['x', 'y', 'z'].into_iter().enumerate() {
+                println!(
+                    "(assert (= (+ pos_{} (* vel_{} t_{})) (+ {} (* {} t_{}))))",
+                    dc, dc, i, pos[di], vel[di], i
+                );
+            }
+        });
+
+    println!("(declare-const result Int)");
+    println!("(assert (= result (+ pos_x pos_y pos_z)))");
+    println!("(check-sat)");
+    println!("(get-value result)");
+
+    println!();
+    println!("Run the above SMT-LIB2 code through an SMT solver (e.g. Z3) to get the result");
+
     None
 }
 
@@ -106,7 +139,7 @@ mod tests {
 
     #[test]
     fn test_part_one() {
-        let result = solve(
+        let result = solve_part_one(
             &advent_of_code::template::read_file("examples", DAY),
             7.,
             27.,
