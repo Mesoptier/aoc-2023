@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use std::collections::{HashMap, HashSet, VecDeque};
 advent_of_code::solution!(23);
 
@@ -52,7 +53,10 @@ impl TryFrom<char> for Tile {
     }
 }
 
-pub fn part_one(input: &str) -> Option<u32> {
+fn solve(input: &str, part_two: bool) -> Option<u32> {
+    type Node = (usize, usize);
+    type TrailsMap = HashMap<Node, ArrayVec<(Node, u32), 12>>;
+
     let grid = input
         .lines()
         .map(|line| {
@@ -63,6 +67,7 @@ pub fn part_one(input: &str) -> Option<u32> {
         })
         .collect::<Vec<_>>();
 
+    // Find the start and target nodes
     let start_node = (
         grid.first()
             .unwrap()
@@ -71,7 +76,6 @@ pub fn part_one(input: &str) -> Option<u32> {
             .unwrap(),
         0,
     );
-
     let target_node = (
         grid.last()
             .unwrap()
@@ -81,109 +85,116 @@ pub fn part_one(input: &str) -> Option<u32> {
         grid.len() - 1,
     );
 
-    // Gather all trails and their lengths
-    let mut trails = HashMap::<(usize, usize), Vec<((usize, usize), usize)>>::new();
-    let mut visited = HashSet::<(usize, usize)>::new();
+    // Gather all trails
+    let mut trails_map = TrailsMap::new();
 
     let mut queue = VecDeque::new();
-    queue.push_back((start_node, Direction::South));
+    let mut visited = HashSet::new();
 
-    while let Some((node, mut direction)) = queue.pop_front() {
+    queue.push_back((start_node, Direction::South));
+    visited.insert(start_node);
+
+    while let Some((node, direction)) = queue.pop_front() {
         let (mut x, mut y) = node;
         let mut steps = 0;
 
-        // Step in current direction
         (x, y) = direction.step_unchecked(x, y);
         steps += 1;
 
+        let mut incoming_direction = direction;
+
         loop {
-            if (x, y) == target_node {
-                trails.entry(node).or_default().push((target_node, steps));
+            if (x, y) == target_node || (x, y) == start_node {
+                trails_map.entry(node).or_default().push(((x, y), steps));
                 break;
             }
 
-            match grid[y][x] {
-                Tile::Path => {
-                    for new_direction in [
-                        Direction::North,
-                        Direction::South,
-                        Direction::East,
-                        Direction::West,
-                    ] {
-                        if new_direction == direction.opposite() {
-                            // Don't go back the way we came
-                            continue;
-                        }
-
-                        let (new_x, new_y) = new_direction.step_unchecked(x, y);
-                        if grid[new_y][new_x] != Tile::Forest {
-                            x = new_x;
-                            y = new_y;
-                            direction = new_direction;
-                            steps += 1;
-                            break;
-                        }
+            let paths = [
+                Direction::North,
+                Direction::South,
+                Direction::East,
+                Direction::West,
+            ]
+            .into_iter()
+            .filter(|&direction| direction != incoming_direction.opposite())
+            .filter_map(|direction| {
+                let (x, y) = direction.step_unchecked(x, y);
+                match grid[y][x] {
+                    Tile::Path => Some((x, y, direction)),
+                    Tile::Slope(slope_direction) if slope_direction == direction || part_two => {
+                        Some((x, y, direction))
                     }
+                    _ => None,
                 }
-                Tile::Slope(slope_direction) => {
-                    // Insert trail to incoming node on this intersection
-                    trails.entry(node).or_default().push(((x, y), steps));
-                    let node = (x, y);
+            })
+            .collect::<ArrayVec<_, 4>>();
 
-                    // Step to middle path of this intersection
-                    let (mid_x, mid_y) = slope_direction.step_unchecked(x, y);
+            match paths.len() {
+                0 => unreachable!("Invalid trail"),
+                1 => {
+                    // Continue on the same path
+                    (x, y, incoming_direction) = paths[0];
+                    steps += 1;
+                }
+                _ => {
+                    // Node is an intersection
+                    trails_map.entry(node).or_default().push(((x, y), steps));
 
-                    for direction in [
-                        Direction::North,
-                        Direction::South,
-                        Direction::East,
-                        Direction::West,
-                    ] {
-                        let (out_x, out_y) = direction.step_unchecked(mid_x, mid_y);
-                        match grid[out_y][out_x] {
-                            Tile::Slope(slope_direction) if slope_direction == direction => {
-                                trails.entry(node).or_default().push(((out_x, out_y), 2));
+                    if visited.insert((x, y)) {
+                        // We haven't visited this node before, so we need to explore it
+                        for (_, _, direction) in paths {
+                            queue.push_back(((x, y), direction));
+                        }
 
-                                if visited.insert((out_x, out_y)) {
-                                    queue.push_back(((out_x, out_y), direction));
-                                }
-                            }
-                            Tile::Path => {
-                                unreachable!("Path should not be adjacent to intersection")
-                            }
-                            _ => {}
+                        if part_two {
+                            queue.push_back(((x, y), incoming_direction.opposite()));
                         }
                     }
 
-                    // Completed this hiking trail
                     break;
                 }
-                Tile::Forest => unreachable!("Cannot step into forest"),
             }
         }
     }
 
-    // Find longest path from start_node to target_node using BFS
-    let mut queue = VecDeque::new();
-    queue.push_back((start_node, 0));
-
-    let mut max_steps = 0;
-    while let Some((node, steps)) = queue.pop_front() {
+    // Find the longest hike from the start to the target, without visiting any node twice
+    fn find_longest_hike(
+        node: Node,
+        target_node: Node,
+        trails: &TrailsMap,
+        visited: &mut HashSet<Node>,
+    ) -> Option<u32> {
         if node == target_node {
-            max_steps = max_steps.max(steps);
-            continue;
+            // We've reached the target node
+            return Some(0);
         }
 
-        for (next_node, trail_length) in trails.get(&node).unwrap() {
-            queue.push_back((*next_node, steps + trail_length));
+        if !visited.insert(node) {
+            // We've already visited this node, so we can't continue exploring
+            return None;
         }
+
+        let result = trails[&node]
+            .iter()
+            .filter_map(|&(next_node, steps)| {
+                find_longest_hike(next_node, target_node, trails, visited)
+                    .map(|next_steps| next_steps + steps)
+            })
+            .max();
+
+        visited.remove(&node);
+        result
     }
 
-    Some(max_steps as u32)
+    find_longest_hike(start_node, target_node, &trails_map, &mut HashSet::new())
+}
+
+pub fn part_one(input: &str) -> Option<u32> {
+    solve(input, false)
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    solve(input, true)
 }
 
 #[cfg(test)]
@@ -199,6 +210,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(154));
     }
 }
