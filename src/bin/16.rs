@@ -95,29 +95,26 @@ fn compute_energized_tiles(
         visited.insert(beam);
 
         let next_directions = match (map[beam.coord], beam.direction) {
-            ('/', Direction::Up) => vec![Direction::Right],
-            ('/', Direction::Right) => vec![Direction::Up],
-            ('/', Direction::Down) => vec![Direction::Left],
-            ('/', Direction::Left) => vec![Direction::Down],
-            ('\\', Direction::Up) => vec![Direction::Left],
-            ('\\', Direction::Left) => vec![Direction::Up],
-            ('\\', Direction::Down) => vec![Direction::Right],
-            ('\\', Direction::Right) => vec![Direction::Down],
+            ('/', Direction::Up) => [Some(Direction::Right), None],
+            ('/', Direction::Right) => [Some(Direction::Up), None],
+            ('/', Direction::Down) => [Some(Direction::Left), None],
+            ('/', Direction::Left) => [Some(Direction::Down), None],
+            ('\\', Direction::Up) => [Some(Direction::Left), None],
+            ('\\', Direction::Left) => [Some(Direction::Up), None],
+            ('\\', Direction::Down) => [Some(Direction::Right), None],
+            ('\\', Direction::Right) => [Some(Direction::Down), None],
             ('|', Direction::Left) | ('|', Direction::Right) => {
-                vec![Direction::Up, Direction::Down]
+                [Some(Direction::Up), Some(Direction::Down)]
             }
             ('-', Direction::Up) | ('-', Direction::Down) => {
-                vec![Direction::Left, Direction::Right]
+                [Some(Direction::Left), Some(Direction::Right)]
             }
-            (_, direction) => vec![direction],
+            (_, direction) => [Some(direction), None],
         };
 
-        for next_direction in next_directions {
-            if let Some(next_coord) = coord_indexer.step(beam.coord, next_direction) {
-                let next_beam = DirectedCoord {
-                    coord: next_coord,
-                    direction: next_direction,
-                };
+        for direction in next_directions.into_iter().flatten() {
+            if let Some(coord) = coord_indexer.step(beam.coord, direction) {
+                let next_beam = DirectedCoord { coord, direction };
                 if !visited.contains(&next_beam) {
                     beam_fronts.push_front(next_beam);
                 }
