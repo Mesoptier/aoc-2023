@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::iter;
 
 use itertools::Itertools;
@@ -40,14 +39,42 @@ fn parse_input(input: &str) -> IResult<&str, Vec<(Vec<SpringCondition>, Vec<usiz
     )(input)
 }
 
-type Cache = HashMap<(usize, usize), usize>;
+struct Cache {
+    cache: Vec<Option<usize>>,
+    width: usize,
+}
 
-fn count_arrangements(
+impl Cache {
+    fn new(width: usize, height: usize) -> Self {
+        Self {
+            cache: vec![None; width * height],
+            width,
+        }
+    }
+
+    fn get_unchecked(&self, x: usize, y: usize) -> Option<usize> {
+        self.cache[y * self.width + x]
+    }
+
+    fn insert_unchecked(&mut self, x: usize, y: usize, value: usize) {
+        self.cache[y * self.width + x] = Some(value);
+    }
+}
+
+fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usize {
+    count_arrangements_inner(
+        row,
+        damaged_groups,
+        &mut Cache::new(row.len() + 1, damaged_groups.len() + 1),
+    )
+}
+
+fn count_arrangements_inner(
     row: &[SpringCondition],
     damaged_groups: &[usize],
     cache: &mut Cache,
 ) -> usize {
-    if let Some(&count) = cache.get(&(row.len(), damaged_groups.len())) {
+    if let Some(count) = cache.get_unchecked(row.len(), damaged_groups.len()) {
         return count;
     }
 
@@ -55,14 +82,10 @@ fn count_arrangements(
         return if damaged_groups.is_empty() { 1 } else { 0 };
     }
     if damaged_groups.is_empty() {
-        return if row
+        let is_row_undamaged = row
             .iter()
-            .all(|&condition| condition != SpringCondition::Damaged)
-        {
-            1
-        } else {
-            0
-        };
+            .all(|&condition| condition != SpringCondition::Damaged);
+        return if is_row_undamaged { 1 } else { 0 };
     }
     if row.len() < damaged_groups.iter().sum::<usize>() + damaged_groups.len() - 1 {
         return 0;
@@ -102,10 +125,10 @@ fn count_arrangements(
             span += 1;
         }
 
-        sum += count_arrangements(&row[start + span..], &damaged_groups[1..], cache);
+        sum += count_arrangements_inner(&row[start + span..], &damaged_groups[1..], cache);
     }
 
-    cache.insert((row.len(), damaged_groups.len()), sum);
+    cache.insert_unchecked(row.len(), damaged_groups.len(), sum);
 
     sum
 }
@@ -115,7 +138,7 @@ pub fn part_one(input: &str) -> Option<usize> {
 
     records
         .into_iter()
-        .map(|(row, damaged_groups)| count_arrangements(&row, &damaged_groups, &mut HashMap::new()))
+        .map(|(row, damaged_groups)| count_arrangements(&row, &damaged_groups))
         .sum1()
 }
 
@@ -134,7 +157,7 @@ pub fn part_two(input: &str) -> Option<usize> {
                 iter::repeat(damaged_groups).take(5).flatten().collect_vec(),
             )
         })
-        .map(|(row, damaged_groups)| count_arrangements(&row, &damaged_groups, &mut HashMap::new()))
+        .map(|(row, damaged_groups)| count_arrangements(&row, &damaged_groups))
         .sum1()
 }
 
