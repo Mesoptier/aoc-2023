@@ -126,7 +126,7 @@ fn find_connected_component_size(adjacency_list: &[Vec<usize>], node: usize) -> 
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
-    let (mut adjacency_list, forward_edges) = {
+    let (mut adjacency_list, mut forward_edges) = {
         let mut name_to_index = HashMap::<&str, usize>::new();
         let mut adjacency_list = vec![];
         let mut forward_edges = vec![];
@@ -151,6 +151,10 @@ pub fn part_one(input: &str) -> Option<usize> {
 
         (adjacency_list, forward_edges)
     };
+
+    forward_edges.sort_by_key(|&edge| {
+        usize::MAX - (adjacency_list[edge.0].len() + adjacency_list[edge.1].len())
+    });
 
     'outer: for edge_i in forward_edges {
         remove_edge(&mut adjacency_list, edge_i);
