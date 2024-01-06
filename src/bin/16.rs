@@ -1,4 +1,5 @@
-use std::collections::{HashSet, VecDeque};
+use advent_of_code::util::{Indexer, VecSet, VecTable};
+use std::collections::VecDeque;
 
 advent_of_code::solution!(16);
 
@@ -10,26 +11,90 @@ enum Direction {
     Left,
 }
 
-fn compute_energized_tiles(
-    map: Vec<Vec<char>>,
-    initial_beam_front: (usize, usize, Direction),
-) -> u32 {
-    let width = map[0].len();
-    let height = map.len();
+#[derive(Copy, Clone)]
+struct Coord {
+    x: usize,
+    y: usize,
+}
 
-    let mut beam_fronts = VecDeque::<(usize, usize, Direction)>::new();
+#[derive(Copy, Clone)]
+struct CoordIndexer {
+    width: usize,
+    height: usize,
+}
+impl Indexer<Coord> for CoordIndexer {
+    fn len(&self) -> usize {
+        self.width * self.height
+    }
+
+    fn index_for(&self, coord: &Coord) -> usize {
+        coord.y * self.width + coord.x
+    }
+}
+
+impl CoordIndexer {
+    fn step(&self, coord: Coord, direction: Direction) -> Option<Coord> {
+        let Coord { x, y } = coord;
+        match direction {
+            Direction::Up if y > 0 => Some(Coord { x, y: y - 1 }),
+            Direction::Right if x + 1 < self.width => Some(Coord { x: x + 1, y }),
+            Direction::Down if y + 1 < self.height => Some(Coord { x, y: y + 1 }),
+            Direction::Left if x > 0 => Some(Coord { x: x - 1, y }),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+struct DirectedCoord {
+    coord: Coord,
+    direction: Direction,
+}
+struct DirectedCoordIndexer {
+    width: usize,
+    height: usize,
+}
+impl Indexer<DirectedCoord> for DirectedCoordIndexer {
+    fn len(&self) -> usize {
+        self.width * self.height * 4
+    }
+
+    fn index_for(&self, directed_coord: &DirectedCoord) -> usize {
+        let DirectedCoord {
+            coord: Coord { x, y },
+            direction,
+        } = *directed_coord;
+        let direction_index = match direction {
+            Direction::Up => 0,
+            Direction::Right => 1,
+            Direction::Down => 2,
+            Direction::Left => 3,
+        };
+        (y * self.width + x) * 4 + direction_index
+    }
+}
+
+fn compute_energized_tiles(
+    map: VecTable<Coord, char, CoordIndexer>,
+    initial_beam_front: DirectedCoord,
+) -> u32 {
+    let mut beam_fronts = VecDeque::<DirectedCoord>::new();
     beam_fronts.push_front(initial_beam_front);
 
-    let mut energized = HashSet::<(usize, usize)>::new();
-    let mut visited = HashSet::<(usize, usize, Direction)>::new();
+    let coord_indexer = *map.indexer();
+    let directed_coord_indexer = DirectedCoordIndexer {
+        width: coord_indexer.width,
+        height: coord_indexer.height,
+    };
 
-    while let Some(beam_front) = beam_fronts.pop_front() {
-        let (x, y, direction) = beam_front;
+    let mut energized = VecSet::new(coord_indexer);
+    let mut visited = VecSet::new(directed_coord_indexer);
 
-        energized.insert((x, y));
-        visited.insert((x, y, direction));
+    while let Some(beam) = beam_fronts.pop_front() {
+        energized.insert(beam.coord);
+        visited.insert(beam);
 
-        let next_directions = match (map[y][x], direction) {
+        let next_directions = match (map[beam.coord], beam.direction) {
             ('/', Direction::Up) => vec![Direction::Right],
             ('/', Direction::Right) => vec![Direction::Up],
             ('/', Direction::Down) => vec![Direction::Left],
@@ -48,17 +113,13 @@ fn compute_energized_tiles(
         };
 
         for next_direction in next_directions {
-            let next_coord = match next_direction {
-                Direction::Up if y > 0 => Some((x, y - 1)),
-                Direction::Right if x + 1 < width => Some((x + 1, y)),
-                Direction::Down if y + 1 < height => Some((x, y + 1)),
-                Direction::Left if x > 0 => Some((x - 1, y)),
-                _ => None,
-            };
-
-            if let Some((next_x, next_y)) = next_coord {
-                if !visited.contains(&(next_x, next_y, next_direction)) {
-                    beam_fronts.push_front((next_x, next_y, next_direction));
+            if let Some(next_coord) = coord_indexer.step(beam.coord, next_direction) {
+                let next_beam = DirectedCoord {
+                    coord: next_coord,
+                    direction: next_direction,
+                };
+                if !visited.contains(&next_beam) {
+                    beam_fronts.push_front(next_beam);
                 }
             }
         }
@@ -67,32 +128,63 @@ fn compute_energized_tiles(
     energized.len() as u32
 }
 
-fn parse_input(input: &str) -> Vec<Vec<char>> {
-    input
+fn parse_input(input: &str) -> VecTable<Coord, char, CoordIndexer> {
+    let mut width = None;
+    let data = input
         .lines()
-        .map(|line| line.chars().collect::<Vec<char>>())
-        .collect::<Vec<Vec<char>>>()
+        .flat_map(|line| {
+            if width.is_none() {
+                width = Some(line.len());
+            } else {
+                debug_assert_eq!(width, Some(line.len()));
+            }
+            line.chars()
+        })
+        .collect::<Vec<char>>();
+    let width = width.unwrap();
+    let height = data.len() / width;
+    let indexer = CoordIndexer { width, height };
+    VecTable::from_vec(data, indexer)
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
     let map = parse_input(input);
-    compute_energized_tiles(map, (0, 0, Direction::Right)).into()
+    compute_energized_tiles(
+        map,
+        DirectedCoord {
+            coord: Coord { x: 0, y: 0 },
+            direction: Direction::Right,
+        },
+    )
+    .into()
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
     let map = parse_input(input);
 
-    let width = map[0].len();
-    let height = map.len();
+    let width = map.indexer().width;
+    let height = map.indexer().height;
 
     let mut initial_beam_fronts = vec![];
     for x in 0..width {
-        initial_beam_fronts.push((x, 0, Direction::Down));
-        initial_beam_fronts.push((x, height - 1, Direction::Up));
+        initial_beam_fronts.push(DirectedCoord {
+            coord: Coord { x, y: 0 },
+            direction: Direction::Down,
+        });
+        initial_beam_fronts.push(DirectedCoord {
+            coord: Coord { x, y: height - 1 },
+            direction: Direction::Up,
+        });
     }
     for y in 0..height {
-        initial_beam_fronts.push((0, y, Direction::Right));
-        initial_beam_fronts.push((width - 1, y, Direction::Left));
+        initial_beam_fronts.push(DirectedCoord {
+            coord: Coord { x: 0, y },
+            direction: Direction::Right,
+        });
+        initial_beam_fronts.push(DirectedCoord {
+            coord: Coord { x: width - 1, y },
+            direction: Direction::Left,
+        });
     }
 
     initial_beam_fronts
