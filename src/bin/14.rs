@@ -4,6 +4,7 @@ use nom::combinator::value;
 use nom::multi::{many1, separated_list1};
 use nom::IResult;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 advent_of_code::solution!(14);
 
@@ -21,20 +22,39 @@ trait TileGrid {
     fn set_unchecked(&mut self, x: usize, y: usize, tile: Tile);
 }
 
-#[derive(Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq)]
 struct Grid {
     tiles: Vec<Tile>,
     width: usize,
     height: usize,
+    total_load: usize,
 }
 
 impl Grid {
     fn new(tiles: Vec<Vec<Tile>>) -> Self {
-        Self {
-            width: tiles[0].len(),
-            height: tiles.len(),
-            tiles: tiles.into_iter().flatten().collect(),
+        let width = tiles[0].len();
+        let height = tiles.len();
+
+        let mut total_load = 0;
+        for y in 0..height {
+            for x in 0..width {
+                if tiles[y][x] == Tile::RoundedRock {
+                    let load = height - y;
+                    total_load += load;
+                }
+            }
         }
+
+        Self {
+            width,
+            height,
+            tiles: tiles.into_iter().flatten().collect(),
+            total_load,
+        }
+    }
+
+    fn total_load(&self) -> usize {
+        self.total_load
     }
 }
 
@@ -52,7 +72,25 @@ impl TileGrid for Grid {
     }
 
     fn set_unchecked(&mut self, x: usize, y: usize, tile: Tile) {
+        match (self.get_unchecked(x, y), tile) {
+            (Tile::RoundedRock, Tile::Empty) => {
+                let load = self.height - y;
+                self.total_load -= load;
+            }
+            (Tile::Empty, Tile::RoundedRock) => {
+                let load = self.height - y;
+                self.total_load += load;
+            }
+            _ => {}
+        }
+
         self.tiles[y * self.width + x] = tile;
+    }
+}
+
+impl Hash for Grid {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.total_load.hash(state);
     }
 }
 
@@ -140,25 +178,13 @@ fn slide_rounded_rocks<G: TileGrid>(grid: &mut G) {
     }
 }
 
-fn compute_total_load(grid: &Grid) -> u32 {
-    let mut total_load = 0;
-    for y in 0..grid.height() {
-        for x in 0..grid.width() {
-            if grid.get_unchecked(x, y) == Tile::RoundedRock {
-                let load = (grid.height() - y) as u32;
-                total_load += load;
-            }
-        }
-    }
-    total_load
-}
-
 pub fn part_one(input: &str) -> Option<u32> {
     let (_, map) = parse_input(input).unwrap();
     let mut grid = Grid::new(map);
 
     slide_rounded_rocks(&mut FlippedGridView::new(&mut grid, Direction::North));
-    Some(compute_total_load(&grid))
+
+    Some(grid.total_load() as u32)
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
@@ -195,7 +221,7 @@ pub fn part_two(input: &str) -> Option<u32> {
         slide_rounded_rocks(&mut FlippedGridView::new(&mut grid, direction));
     }
 
-    Some(compute_total_load(&grid))
+    Some(grid.total_load() as u32)
 }
 
 #[cfg(test)]
