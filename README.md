@@ -1,11 +1,43 @@
 <img src="./.assets/christmas_ferris.png" width="164">
 
-# 🎄 Advent of Code {year}
+# 🎄 Advent of Code 2023
 
 Solutions for [Advent of Code](https://adventofcode.com/) in [Rust](https://www.rust-lang.org/).
 
 <!--- advent_readme_stars table --->
 
+<!--- benchmarking table --->
+## Benchmarks
+
+| Day | Part 1 | Part 2 |
+| :---: | :---: | :---:  |
+| [Day 1](./src/bin/01.rs) | `79.9µs` | `223.2µs` |
+| [Day 2](./src/bin/02.rs) | `61.2µs` | `59.3µs` |
+| [Day 3](./src/bin/03.rs) | `299.4µs` | `441.1µs` |
+| [Day 4](./src/bin/04.rs) | `262.3µs` | `270.8µs` |
+| [Day 5](./src/bin/05.rs) | `15.4µs` | `19.8µs` |
+| [Day 6](./src/bin/06.rs) | `264.0ns` | `1.2µs` |
+| [Day 7](./src/bin/07.rs) | `1.3ms` | `1.3ms` |
+| [Day 8](./src/bin/08.rs) | `340.4µs` | `1.6ms` |
+| [Day 9](./src/bin/09.rs) | `238.7µs` | `231.3µs` |
+| [Day 10](./src/bin/10.rs) | `483.6µs` | `475.7µs` |
+| [Day 11](./src/bin/11.rs) | `103.8µs` | `103.7µs` |
+| [Day 12](./src/bin/12.rs) | `1.2ms` | `20.1ms` |
+| [Day 13](./src/bin/13.rs) | `418.7µs` | `434.0µs` |
+| [Day 14](./src/bin/14.rs) | `135.5µs` | `98.2ms` |
+| [Day 15](./src/bin/15.rs) | `61.5µs` | `187.9µs` |
+| [Day 16](./src/bin/16.rs) | `2.1ms` | `493.7ms` |
+| [Day 17](./src/bin/17.rs) | `112.4ms` | `337.8ms` |
+| [Day 18](./src/bin/18.rs) | `85.6µs` | `91.1µs` |
+| [Day 19](./src/bin/19.rs) | `213.7µs` | `171.3µs` |
+| [Day 20](./src/bin/20.rs) | `444.2µs` | `1.8ms` |
+| [Day 21](./src/bin/21.rs) | `8.1ms` | `19.0ns` |
+| [Day 22](./src/bin/22.rs) | `12.5ms` | `38.1ms` |
+| [Day 23](./src/bin/23.rs) | `264.8µs` | `280.4ms` |
+| [Day 24](./src/bin/24.rs) | `487.1µs` | `-` |
+| [Day 25](./src/bin/25.rs) | `1.1ms` | `-` |
+
+**Total: 1418.41ms**
 <!--- benchmarking table --->
 
 ---
