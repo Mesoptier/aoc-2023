@@ -27,6 +27,23 @@ where
 
 impl<K, V, I> VecTable<K, V, I>
 where
+    V: Clone,
+    I: Indexer<K>,
+{
+    /// Creates a new `VecTable` with the given default value and indexer.
+    pub fn with_default(default: V, indexer: I) -> Self {
+        let mut data = Vec::with_capacity(indexer.len());
+        data.resize_with(indexer.len(), || default.clone());
+        Self {
+            data,
+            indexer,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<K, V, I> VecTable<K, V, I>
+where
     I: Indexer<K>,
 {
     /// Creates a new `VecTable` from the given data and indexer.
@@ -55,6 +72,11 @@ where
             // SAFETY: `index` is guaranteed to be in bounds.
             self.data.get_unchecked_mut(index)
         }
+    }
+
+    /// Inserts the given value at the given key and returns the previous value.
+    pub fn insert(&mut self, key: &K, value: V) -> V {
+        std::mem::replace(self.get_mut(key), value)
     }
 }
 

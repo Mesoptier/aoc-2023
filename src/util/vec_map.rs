@@ -27,7 +27,7 @@ where
 
     /// Inserts the given value into the map and returns the previous value associated with the key.
     pub fn insert(&mut self, key: &K, value: V) -> Option<V> {
-        std::mem::replace(self.table.get_mut(key), Some(value))
+        self.table.insert(key, Some(value))
     }
 
     /// Removes the value associated with the given key from the map and returns it.
