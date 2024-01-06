@@ -178,16 +178,16 @@ fn slide_rounded_rocks<G: TileGrid>(grid: &mut G) {
     }
 }
 
-pub fn part_one(input: &str) -> Option<u32> {
+pub fn part_one(input: &str) -> Option<usize> {
     let (_, map) = parse_input(input).unwrap();
     let mut grid = Grid::new(map);
 
     slide_rounded_rocks(&mut FlippedGridView::new(&mut grid, Direction::North));
 
-    Some(grid.total_load() as u32)
+    Some(grid.total_load())
 }
 
-pub fn part_two(input: &str) -> Option<u32> {
+pub fn part_two(input: &str) -> Option<usize> {
     let (_, map) = parse_input(input).unwrap();
     let mut grid = Grid::new(map);
 
@@ -202,25 +202,22 @@ pub fn part_two(input: &str) -> Option<u32> {
 
     let mut steps = 0;
     let mut cache = HashMap::<(Grid, Direction), usize>::new();
-
-    let mut cycle = None;
+    let mut total_loads = vec![];
 
     for direction in directions.by_ref() {
         slide_rounded_rocks(&mut FlippedGridView::new(&mut grid, direction));
         steps += 1;
 
         if let Some(prev_steps) = cache.insert((grid.clone(), direction), steps) {
-            cycle = Some(steps - prev_steps);
-            break;
+            let cycle = steps - prev_steps;
+            let steps_remaining = (4_000_000_000 - steps) % cycle;
+            return Some(total_loads[total_loads.len() - cycle + steps_remaining]);
         }
+
+        total_loads.push(grid.total_load());
     }
 
-    let steps_remaining = (4_000_000_000 - steps) % cycle.unwrap();
-    for direction in directions.take(steps_remaining) {
-        slide_rounded_rocks(&mut FlippedGridView::new(&mut grid, direction));
-    }
-
-    Some(grid.total_load() as u32)
+    None
 }
 
 #[cfg(test)]
