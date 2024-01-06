@@ -209,11 +209,10 @@ pub fn part_two(input: &str) -> Option<u32> {
         slide_rounded_rocks(&mut FlippedGridView::new(&mut grid, direction));
         steps += 1;
 
-        if let Some(prev_steps) = cache.get(&(grid.clone(), direction)) {
+        if let Some(prev_steps) = cache.insert((grid.clone(), direction), steps) {
             cycle = Some(steps - prev_steps);
             break;
         }
-        cache.insert((grid.clone(), direction), steps);
     }
 
     let steps_remaining = (4_000_000_000 - steps) % cycle.unwrap();
