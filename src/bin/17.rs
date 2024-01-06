@@ -1,4 +1,4 @@
-use std::cmp::Reverse;
+use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 
 advent_of_code::solution!(17);
@@ -22,7 +22,7 @@ impl Direction {
     }
 }
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Copy, Clone, Debug)]
+#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
 struct State {
     x: usize,
     y: usize,
@@ -30,10 +30,25 @@ struct State {
     direction_steps: usize,
 }
 
-#[derive(Eq, PartialEq, Ord, PartialOrd)]
 struct Entry {
     cost: u32,
     state: State,
+}
+impl PartialEq for Entry {
+    fn eq(&self, other: &Self) -> bool {
+        self.cost.eq(&other.cost)
+    }
+}
+impl Eq for Entry {}
+impl PartialOrd for Entry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Entry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.cost.cmp(&other.cost).reverse()
+    }
 }
 
 fn solve(input: &str, ultra: bool) -> Option<u32> {
@@ -45,8 +60,8 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
     let width = map[0].len();
     let height = map.len();
 
-    let mut min_heap = BinaryHeap::<Reverse<Entry>>::new();
-    min_heap.push(Reverse(Entry {
+    let mut min_heap = BinaryHeap::<Entry>::new();
+    min_heap.push(Entry {
         cost: 0,
         state: State {
             x: 0,
@@ -54,8 +69,8 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
             direction: Direction::Down,
             direction_steps: 0,
         },
-    }));
-    min_heap.push(Reverse(Entry {
+    });
+    min_heap.push(Entry {
         cost: 0,
         state: State {
             x: 0,
@@ -63,11 +78,11 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
             direction: Direction::Right,
             direction_steps: 0,
         },
-    }));
+    });
 
     let mut best_costs = HashMap::<State, u32>::new();
 
-    while let Some(Reverse(entry)) = min_heap.pop() {
+    while let Some(entry) = min_heap.pop() {
         let Entry { cost, state } = entry;
 
         if state.x == width - 1 && state.y == height - 1 && (!ultra || state.direction_steps >= 4) {
@@ -148,10 +163,10 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
 
             if let Some(next_state) = next_state {
                 let next_cost = cost + map[next_state.y][next_state.x];
-                min_heap.push(Reverse(Entry {
+                min_heap.push(Entry {
                     cost: next_cost,
                     state: next_state,
-                }));
+                });
             }
         }
     }
