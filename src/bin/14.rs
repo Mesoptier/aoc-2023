@@ -5,6 +5,7 @@ use nom::multi::{many1, separated_list1};
 use nom::IResult;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::marker::PhantomData;
 
 advent_of_code::solution!(14);
 
@@ -95,50 +96,96 @@ impl Hash for Grid {
 }
 
 /// A view into a grid that flips the x and y axis such that the `direction` side of the original grid is now the top.
-struct FlippedGridView<'a, G> {
+struct FlippedGridView<'a, G, D> {
     grid: &'a mut G,
-    direction: Direction,
+    _direction: PhantomData<D>,
 }
 
-impl<'a, G> FlippedGridView<'a, G> {
-    fn new(grid: &'a mut G, direction: Direction) -> Self {
-        Self { grid, direction }
+impl<'a, G, D> FlippedGridView<'a, G, D> {
+    fn new(grid: &'a mut G) -> Self {
+        Self {
+            grid,
+            _direction: PhantomData,
+        }
     }
 }
 
-impl<'a, G: TileGrid> TileGrid for FlippedGridView<'a, G> {
+impl<'a, G: TileGrid> TileGrid for FlippedGridView<'a, G, North> {
     fn width(&self) -> usize {
-        match self.direction {
-            Direction::North | Direction::South => self.grid.width(),
-            Direction::West | Direction::East => self.grid.height(),
-        }
+        self.grid.width()
     }
 
     fn height(&self) -> usize {
-        match self.direction {
-            Direction::North | Direction::South => self.grid.height(),
-            Direction::West | Direction::East => self.grid.width(),
-        }
+        self.grid.height()
     }
 
     fn get_unchecked(&self, x: usize, y: usize) -> Tile {
-        match self.direction {
-            Direction::North => self.grid.get_unchecked(x, y),
-            Direction::West => self.grid.get_unchecked(y, x),
-            Direction::South => self.grid.get_unchecked(x, self.grid.height() - 1 - y),
-            Direction::East => self.grid.get_unchecked(self.grid.width() - 1 - y, x),
-        }
+        self.grid.get_unchecked(x, y)
     }
 
     fn set_unchecked(&mut self, x: usize, y: usize, tile: Tile) {
-        match self.direction {
-            Direction::North => self.grid.set_unchecked(x, y, tile),
-            Direction::West => self.grid.set_unchecked(y, x, tile),
-            Direction::South => self.grid.set_unchecked(x, self.grid.height() - 1 - y, tile),
-            Direction::East => self.grid.set_unchecked(self.grid.width() - 1 - y, x, tile),
-        }
+        self.grid.set_unchecked(x, y, tile)
     }
 }
+
+impl<'a, G: TileGrid> TileGrid for FlippedGridView<'a, G, West> {
+    fn width(&self) -> usize {
+        self.grid.height()
+    }
+
+    fn height(&self) -> usize {
+        self.grid.width()
+    }
+
+    fn get_unchecked(&self, x: usize, y: usize) -> Tile {
+        self.grid.get_unchecked(y, x)
+    }
+
+    fn set_unchecked(&mut self, x: usize, y: usize, tile: Tile) {
+        self.grid.set_unchecked(y, x, tile)
+    }
+}
+
+impl<'a, G: TileGrid> TileGrid for FlippedGridView<'a, G, South> {
+    fn width(&self) -> usize {
+        self.grid.width()
+    }
+
+    fn height(&self) -> usize {
+        self.grid.height()
+    }
+
+    fn get_unchecked(&self, x: usize, y: usize) -> Tile {
+        self.grid.get_unchecked(x, self.grid.height() - 1 - y)
+    }
+
+    fn set_unchecked(&mut self, x: usize, y: usize, tile: Tile) {
+        self.grid.set_unchecked(x, self.grid.height() - 1 - y, tile)
+    }
+}
+
+impl<'a, G: TileGrid> TileGrid for FlippedGridView<'a, G, East> {
+    fn width(&self) -> usize {
+        self.grid.height()
+    }
+
+    fn height(&self) -> usize {
+        self.grid.width()
+    }
+
+    fn get_unchecked(&self, x: usize, y: usize) -> Tile {
+        self.grid.get_unchecked(self.grid.width() - 1 - y, x)
+    }
+
+    fn set_unchecked(&mut self, x: usize, y: usize, tile: Tile) {
+        self.grid.set_unchecked(self.grid.width() - 1 - y, x, tile)
+    }
+}
+
+struct North;
+struct West;
+struct South;
+struct East;
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 enum Direction {
@@ -182,7 +229,7 @@ pub fn part_one(input: &str) -> Option<usize> {
     let (_, map) = parse_input(input).unwrap();
     let mut grid = Grid::new(map);
 
-    slide_rounded_rocks(&mut FlippedGridView::new(&mut grid, Direction::North));
+    slide_rounded_rocks(&mut FlippedGridView::<_, North>::new(&mut grid));
 
     Some(grid.total_load())
 }
@@ -205,7 +252,16 @@ pub fn part_two(input: &str) -> Option<usize> {
     let mut total_loads = vec![];
 
     for direction in directions.by_ref() {
-        slide_rounded_rocks(&mut FlippedGridView::new(&mut grid, direction));
+        match direction {
+            Direction::North => {
+                slide_rounded_rocks(&mut FlippedGridView::<_, North>::new(&mut grid))
+            }
+            Direction::West => slide_rounded_rocks(&mut FlippedGridView::<_, West>::new(&mut grid)),
+            Direction::South => {
+                slide_rounded_rocks(&mut FlippedGridView::<_, South>::new(&mut grid))
+            }
+            Direction::East => slide_rounded_rocks(&mut FlippedGridView::<_, East>::new(&mut grid)),
+        }
         steps += 1;
 
         if let Some(prev_steps) = cache.insert((grid.clone(), direction), steps) {
