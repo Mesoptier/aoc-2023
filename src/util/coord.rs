@@ -8,10 +8,27 @@ pub enum Direction {
     Left,
 }
 
-#[derive(Copy, Clone)]
+impl Direction {
+    pub fn opposite(self) -> Self {
+        match self {
+            Direction::Up => Direction::Down,
+            Direction::Right => Direction::Left,
+            Direction::Down => Direction::Up,
+            Direction::Left => Direction::Right,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Coord {
     pub x: usize,
     pub y: usize,
+}
+
+impl Coord {
+    pub fn new(x: usize, y: usize) -> Self {
+        Self { x, y }
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -50,10 +67,19 @@ impl CoordIndexer {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DirectedCoord {
     pub coord: Coord,
     pub direction: Direction,
+}
+
+impl DirectedCoord {
+    pub fn new(x: usize, y: usize, direction: Direction) -> Self {
+        Self {
+            coord: Coord::new(x, y),
+            direction,
+        }
+    }
 }
 
 pub struct DirectedCoordIndexer {

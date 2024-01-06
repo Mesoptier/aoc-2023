@@ -1,33 +1,28 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 
+use advent_of_code::util::coord::{Coord, CoordIndexer, DirectedCoord, Direction};
+use advent_of_code::util::VecTable;
+
 advent_of_code::solution!(17);
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Copy, Clone, Debug)]
-enum Direction {
-    Up,
-    Down,
-    Left,
-    Right,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct State {
+    directed_coord: DirectedCoord,
+    direction_steps: usize,
 }
 
-impl Direction {
-    fn opposite(&self) -> Self {
-        match self {
-            Direction::Up => Direction::Down,
-            Direction::Down => Direction::Up,
-            Direction::Left => Direction::Right,
-            Direction::Right => Direction::Left,
+impl State {
+    fn new(x: usize, y: usize, direction: Direction, direction_steps: usize) -> Self {
+        Self {
+            directed_coord: DirectedCoord::new(x, y, direction),
+            direction_steps,
         }
     }
-}
 
-#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
-struct State {
-    x: usize,
-    y: usize,
-    direction: Direction,
-    direction_steps: usize,
+    fn coord(&self) -> Coord {
+        self.directed_coord.coord
+    }
 }
 
 struct Entry {
@@ -51,41 +46,56 @@ impl Ord for Entry {
     }
 }
 
-fn solve(input: &str, ultra: bool) -> Option<u32> {
-    let map: Vec<Vec<u32>> = input
+fn parse_input(input: &str) -> VecTable<Coord, u32, CoordIndexer> {
+    let mut width = None;
+    let data = input
         .lines()
-        .map(|line| line.chars().map(|c| c.to_digit(10).unwrap()).collect())
-        .collect();
+        .flat_map(|line| {
+            if width.is_none() {
+                width = Some(line.len());
+            } else {
+                debug_assert_eq!(width, Some(line.len()));
+            }
+            line.chars().map(|c| c.to_digit(10).unwrap())
+        })
+        .collect::<Vec<_>>();
+    let width = width.unwrap();
+    let height = data.len() / width;
+    let indexer = CoordIndexer::new(width, height);
+    VecTable::from_vec(data, indexer)
+}
 
-    let width = map[0].len();
-    let height = map.len();
+fn solve(input: &str, ultra: bool) -> Option<u32> {
+    let grid = parse_input(input);
+
+    let coord_indexer = *grid.indexer();
+    let width = coord_indexer.width;
+    let height = coord_indexer.height;
 
     let mut min_heap = BinaryHeap::<Entry>::new();
     min_heap.push(Entry {
         cost: 0,
-        state: State {
-            x: 0,
-            y: 0,
-            direction: Direction::Down,
-            direction_steps: 0,
-        },
+        state: State::new(0, 0, Direction::Down, 0),
     });
     min_heap.push(Entry {
         cost: 0,
-        state: State {
-            x: 0,
-            y: 0,
-            direction: Direction::Right,
-            direction_steps: 0,
-        },
+        state: State::new(0, 0, Direction::Right, 0),
     });
 
     let mut best_costs = HashMap::<State, u32>::new();
 
     while let Some(entry) = min_heap.pop() {
         let Entry { cost, state } = entry;
+        let State {
+            directed_coord:
+                DirectedCoord {
+                    coord: Coord { x, y },
+                    direction,
+                },
+            direction_steps,
+        } = state;
 
-        if state.x == width - 1 && state.y == height - 1 && (!ultra || state.direction_steps >= 4) {
+        if x == width - 1 && y == height - 1 && (!ultra || direction_steps >= 4) {
             // Found the destination
             return Some(cost);
         }
@@ -100,69 +110,57 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
         // Update the best cost for this state
         best_costs.insert(state, cost);
 
-        for direction in [
+        for next_direction in [
             Direction::Up,
             Direction::Right,
             Direction::Down,
             Direction::Left,
         ] {
-            if direction == state.direction.opposite() {
+            if next_direction == direction.opposite() {
                 // Can't reverse direction
                 continue;
             }
 
-            let direction_steps = if direction == state.direction {
-                state.direction_steps + 1
+            let next_direction_steps = if next_direction == direction {
+                direction_steps + 1
             } else {
                 1
             };
 
             if !ultra {
-                if direction_steps > 3 {
+                if next_direction_steps > 3 {
                     // Can't go in the same direction for more than 3 steps
                     continue;
                 }
             } else {
-                if direction_steps > 10 {
+                if next_direction_steps > 10 {
                     // Can't go in the same direction for more than 10 steps
                     continue;
                 }
-                if state.direction_steps < 4 && direction != state.direction {
+                if direction_steps < 4 && next_direction != direction {
                     // Can't change direction before 3 steps
                     continue;
                 }
             }
 
-            let next_state = match direction {
-                Direction::Up if state.y > 0 => Some(State {
-                    x: state.x,
-                    y: state.y - 1,
-                    direction,
-                    direction_steps,
-                }),
-                Direction::Right if state.x + 1 < width => Some(State {
-                    x: state.x + 1,
-                    y: state.y,
-                    direction,
-                    direction_steps,
-                }),
-                Direction::Down if state.y + 1 < height => Some(State {
-                    x: state.x,
-                    y: state.y + 1,
-                    direction,
-                    direction_steps,
-                }),
-                Direction::Left if state.x > 0 => Some(State {
-                    x: state.x - 1,
-                    y: state.y,
-                    direction,
-                    direction_steps,
-                }),
+            let next_state = match next_direction {
+                Direction::Up if y > 0 => {
+                    Some(State::new(x, y - 1, next_direction, next_direction_steps))
+                }
+                Direction::Right if x + 1 < width => {
+                    Some(State::new(x + 1, y, next_direction, next_direction_steps))
+                }
+                Direction::Down if y + 1 < height => {
+                    Some(State::new(x, y + 1, next_direction, next_direction_steps))
+                }
+                Direction::Left if x > 0 => {
+                    Some(State::new(x - 1, y, next_direction, next_direction_steps))
+                }
                 _ => None,
             };
 
             if let Some(next_state) = next_state {
-                let next_cost = cost + map[next_state.y][next_state.x];
+                let next_cost = cost + grid.get(&next_state.coord());
                 min_heap.push(Entry {
                     cost: next_cost,
                     state: next_state,
