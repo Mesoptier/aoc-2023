@@ -62,75 +62,66 @@ impl Cache {
 }
 
 fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usize {
-    count_arrangements_inner(
-        row,
-        damaged_groups,
-        &mut Cache::new(row.len() + 1, damaged_groups.len() + 1),
-    )
-}
+    let mut cache = Cache::new(row.len() + 1, damaged_groups.len() + 1);
 
-fn count_arrangements_inner(
-    row: &[SpringCondition],
-    damaged_groups: &[usize],
-    cache: &mut Cache,
-) -> usize {
-    if let Some(count) = cache.get_unchecked(row.len(), damaged_groups.len()) {
-        return count;
-    }
+    for j in (0..=damaged_groups.len()).rev() {
+        for i in (0..=row.len()).rev() {
+            let row = &row[i..];
+            let damaged_groups = &damaged_groups[j..];
 
-    if row.is_empty() {
-        return if damaged_groups.is_empty() { 1 } else { 0 };
-    }
-    if damaged_groups.is_empty() {
-        let is_row_undamaged = row
-            .iter()
-            .all(|&condition| condition != SpringCondition::Damaged);
-        return if is_row_undamaged { 1 } else { 0 };
-    }
-    if row.len() < damaged_groups.iter().sum::<usize>() + damaged_groups.len() - 1 {
-        return 0;
-    }
-
-    let mut sum = 0;
-    let mut final_iteration = false;
-
-    'outer: for (start, &condition) in row.iter().enumerate() {
-        if final_iteration {
-            break 'outer;
-        }
-        if damaged_groups[0] > row.len() - start {
-            // Not enough space for the damaged group.
-            break 'outer;
-        }
-        if condition == SpringCondition::Damaged {
-            // First damaged spring must be part of the first damaged group, so
-            // any iterations after this one would be invalid.
-            final_iteration = true;
-        }
-
-        // Check if a damaged group of the correct size starts at `start`.
-        let mut span = 0;
-        while span < damaged_groups[0] {
-            if row[start + span] == SpringCondition::Operational {
-                continue 'outer;
+            if row.is_empty() {
+                cache.insert_unchecked(i, j, if damaged_groups.is_empty() { 1 } else { 0 });
+                continue;
             }
-            span += 1;
-        }
-
-        // Damaged group must be followed by at least one operational spring (or the end of the row).
-        if start + span < row.len() {
-            if row[start + span] == SpringCondition::Damaged {
-                continue 'outer;
+            if damaged_groups.is_empty() {
+                if row[0] == SpringCondition::Damaged {
+                    cache.insert_unchecked(i, j, 0);
+                    continue;
+                }
+                cache.insert_unchecked(i, j, cache.get_unchecked(i + 1, j).unwrap());
+                continue;
             }
-            span += 1;
-        }
 
-        sum += count_arrangements_inner(&row[start + span..], &damaged_groups[1..], cache);
+            if damaged_groups[0] > row.len() {
+                // Not enough space for the damaged group.
+                cache.insert_unchecked(i, j, 0);
+                continue;
+            }
+
+            let mut num_arrangements = 0;
+
+            if !row[..damaged_groups[0]].contains(&SpringCondition::Operational) {
+                if row.len() == damaged_groups[0] {
+                    // Damaged group spans the entire row.
+                    cache.insert_unchecked(
+                        i,
+                        j,
+                        cache.get_unchecked(i + damaged_groups[0], j + 1).unwrap(),
+                    );
+                    continue;
+                }
+
+                if row[damaged_groups[0]] != SpringCondition::Damaged {
+                    // Damaged group is followed by at least one operational spring.
+                    num_arrangements += cache
+                        .get_unchecked(i + damaged_groups[0] + 1, j + 1)
+                        .unwrap()
+                }
+            } else if row[0] == SpringCondition::Damaged {
+                // First damaged spring must be part of the first damaged group.
+                cache.insert_unchecked(i, j, 0);
+                continue;
+            }
+
+            if row[0] != SpringCondition::Damaged {
+                num_arrangements += cache.get_unchecked(i + 1, j).unwrap();
+            }
+
+            cache.insert_unchecked(i, j, num_arrangements);
+        }
     }
 
-    cache.insert_unchecked(row.len(), damaged_groups.len(), sum);
-
-    sum
+    cache.get_unchecked(0, 0).unwrap()
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
