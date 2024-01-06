@@ -87,11 +87,14 @@ fn compute_energized_tiles(
         height: coord_indexer.height,
     };
 
+    let mut energized_count = 0;
     let mut energized = VecSet::new(coord_indexer);
     let mut visited = VecSet::new(directed_coord_indexer);
 
     while let Some(beam) = beam_fronts.pop_front() {
-        energized.insert(beam.coord);
+        if energized.insert(beam.coord) {
+            energized_count += 1;
+        }
         visited.insert(beam);
 
         let next_directions = match (map[beam.coord], beam.direction) {
@@ -122,7 +125,7 @@ fn compute_energized_tiles(
         }
     }
 
-    energized.len() as u32
+    energized_count
 }
 
 fn parse_input(input: &str) -> VecTable<Coord, char, CoordIndexer> {
