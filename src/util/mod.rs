@@ -1,3 +1,4 @@
+pub mod coord;
 mod indexer;
 mod vec_map;
 mod vec_set;

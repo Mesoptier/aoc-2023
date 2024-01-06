@@ -1,79 +1,13 @@
-use advent_of_code::util::{Indexer, VecSet, VecTable};
-use rayon::prelude::*;
 use std::collections::VecDeque;
 
+use rayon::prelude::*;
+
+use advent_of_code::util::coord::{
+    Coord, CoordIndexer, DirectedCoord, DirectedCoordIndexer, Direction,
+};
+use advent_of_code::util::{VecSet, VecTable};
+
 advent_of_code::solution!(16);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Direction {
-    Up,
-    Right,
-    Down,
-    Left,
-}
-
-#[derive(Copy, Clone)]
-struct Coord {
-    x: usize,
-    y: usize,
-}
-
-#[derive(Copy, Clone)]
-struct CoordIndexer {
-    width: usize,
-    height: usize,
-}
-impl Indexer<Coord> for CoordIndexer {
-    fn len(&self) -> usize {
-        self.width * self.height
-    }
-
-    fn index_for(&self, coord: &Coord) -> usize {
-        coord.y * self.width + coord.x
-    }
-}
-
-impl CoordIndexer {
-    fn step(&self, coord: Coord, direction: Direction) -> Option<Coord> {
-        let Coord { x, y } = coord;
-        match direction {
-            Direction::Up if y > 0 => Some(Coord { x, y: y - 1 }),
-            Direction::Right if x + 1 < self.width => Some(Coord { x: x + 1, y }),
-            Direction::Down if y + 1 < self.height => Some(Coord { x, y: y + 1 }),
-            Direction::Left if x > 0 => Some(Coord { x: x - 1, y }),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Copy, Clone)]
-struct DirectedCoord {
-    coord: Coord,
-    direction: Direction,
-}
-struct DirectedCoordIndexer {
-    width: usize,
-    height: usize,
-}
-impl Indexer<DirectedCoord> for DirectedCoordIndexer {
-    fn len(&self) -> usize {
-        self.width * self.height * 4
-    }
-
-    fn index_for(&self, directed_coord: &DirectedCoord) -> usize {
-        let DirectedCoord {
-            coord: Coord { x, y },
-            direction,
-        } = *directed_coord;
-        let direction_index = match direction {
-            Direction::Up => 0,
-            Direction::Right => 1,
-            Direction::Down => 2,
-            Direction::Left => 3,
-        };
-        (y * self.width + x) * 4 + direction_index
-    }
-}
 
 fn compute_energized_tiles(
     map: VecTable<Coord, char, CoordIndexer>,
@@ -83,10 +17,7 @@ fn compute_energized_tiles(
     beam_fronts.push_front(initial_beam_front);
 
     let coord_indexer = *map.indexer();
-    let directed_coord_indexer = DirectedCoordIndexer {
-        width: coord_indexer.width,
-        height: coord_indexer.height,
-    };
+    let directed_coord_indexer = DirectedCoordIndexer::from(coord_indexer);
 
     let mut energized_count = 0;
     let mut energized = VecSet::new(coord_indexer);
@@ -144,7 +75,7 @@ fn parse_input(input: &str) -> VecTable<Coord, char, CoordIndexer> {
         .collect::<Vec<char>>();
     let width = width.unwrap();
     let height = data.len() / width;
-    let indexer = CoordIndexer { width, height };
+    let indexer = CoordIndexer::new(width, height);
     VecTable::from_vec(data, indexer)
 }
 
