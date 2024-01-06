@@ -65,6 +65,9 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
     let mut cache = Cache::new(row.len() + 1, damaged_groups.len() + 1);
 
     for j in (0..=damaged_groups.len()).rev() {
+        // Number of (potentially) damaged springs at the beginning of the row.
+        let mut damaged_prefix = 0;
+
         for i in (0..=row.len()).rev() {
             let row = &row[i..];
             let damaged_groups = &damaged_groups[j..];
@@ -73,6 +76,13 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
                 cache.insert_unchecked(i, j, if damaged_groups.is_empty() { 1 } else { 0 });
                 continue;
             }
+
+            // Maintain the number of damaged springs at the beginning of the row.
+            match row[0] {
+                SpringCondition::Damaged | SpringCondition::Unknown => damaged_prefix += 1,
+                SpringCondition::Operational => damaged_prefix = 0,
+            }
+
             if damaged_groups.is_empty() {
                 if row[0] == SpringCondition::Damaged {
                     cache.insert_unchecked(i, j, 0);
@@ -90,7 +100,9 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
 
             let mut num_arrangements = 0;
 
-            if !row[..damaged_groups[0]].contains(&SpringCondition::Operational) {
+            if damaged_prefix >= damaged_groups[0] {
+                // A damaged group could start here.
+
                 if row.len() == damaged_groups[0] {
                     // Damaged group spans the entire row.
                     cache.insert_unchecked(
