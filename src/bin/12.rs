@@ -1,5 +1,6 @@
 use std::iter;
 
+use advent_of_code::util::{Indexer, VecTable};
 use itertools::Itertools;
 use nom::bytes::complete::tag;
 use nom::character::complete::{digit1, line_ending, one_of, space1};
@@ -39,30 +40,29 @@ fn parse_input(input: &str) -> IResult<&str, Vec<(Vec<SpringCondition>, Vec<usiz
     )(input)
 }
 
-struct Cache {
-    cache: Vec<Option<usize>>,
+struct CacheIndexer {
     width: usize,
+    height: usize,
 }
 
-impl Cache {
-    fn new(width: usize, height: usize) -> Self {
-        Self {
-            cache: vec![None; width * height],
-            width,
-        }
+impl Indexer<(usize, usize)> for CacheIndexer {
+    fn len(&self) -> usize {
+        self.width * self.height
     }
 
-    fn get_unchecked(&self, x: usize, y: usize) -> Option<usize> {
-        self.cache[y * self.width + x]
-    }
-
-    fn insert_unchecked(&mut self, x: usize, y: usize, value: usize) {
-        self.cache[y * self.width + x] = Some(value);
+    fn index_for(&self, (x, y): &(usize, usize)) -> usize {
+        y * self.width + x
     }
 }
 
 fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usize {
-    let mut cache = Cache::new(row.len() + 1, damaged_groups.len() + 1);
+    let mut cache = VecTable::with_default(
+        usize::MAX,
+        CacheIndexer {
+            width: row.len() + 1,
+            height: damaged_groups.len() + 1,
+        },
+    );
 
     for j in (0..=damaged_groups.len()).rev() {
         // Number of (potentially) damaged springs at the beginning of the row.
@@ -73,7 +73,7 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
             let damaged_groups = &damaged_groups[j..];
 
             if row.is_empty() {
-                cache.insert_unchecked(i, j, if damaged_groups.is_empty() { 1 } else { 0 });
+                cache.insert(&(i, j), if damaged_groups.is_empty() { 1 } else { 0 });
                 continue;
             }
 
@@ -85,16 +85,16 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
 
             if damaged_groups.is_empty() {
                 if row[0] == SpringCondition::Damaged {
-                    cache.insert_unchecked(i, j, 0);
+                    cache.insert(&(i, j), 0);
                     continue;
                 }
-                cache.insert_unchecked(i, j, cache.get_unchecked(i + 1, j).unwrap());
+                cache.insert(&(i, j), *cache.get(&(i + 1, j)));
                 continue;
             }
 
             if damaged_groups[0] > row.len() {
                 // Not enough space for the damaged group.
-                cache.insert_unchecked(i, j, 0);
+                cache.insert(&(i, j), 0);
                 continue;
             }
 
@@ -105,35 +105,29 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
 
                 if row.len() == damaged_groups[0] {
                     // Damaged group spans the entire row.
-                    cache.insert_unchecked(
-                        i,
-                        j,
-                        cache.get_unchecked(i + damaged_groups[0], j + 1).unwrap(),
-                    );
+                    cache.insert(&(i, j), *cache.get(&(i + damaged_groups[0], j + 1)));
                     continue;
                 }
 
                 if row[damaged_groups[0]] != SpringCondition::Damaged {
                     // Damaged group is followed by at least one operational spring.
-                    num_arrangements += cache
-                        .get_unchecked(i + damaged_groups[0] + 1, j + 1)
-                        .unwrap()
+                    num_arrangements += cache.get(&(i + damaged_groups[0] + 1, j + 1))
                 }
             } else if row[0] == SpringCondition::Damaged {
                 // First damaged spring must be part of the first damaged group.
-                cache.insert_unchecked(i, j, 0);
+                cache.insert(&(i, j), 0);
                 continue;
             }
 
             if row[0] != SpringCondition::Damaged {
-                num_arrangements += cache.get_unchecked(i + 1, j).unwrap();
+                num_arrangements += cache.get(&(i + 1, j));
             }
 
-            cache.insert_unchecked(i, j, num_arrangements);
+            cache.insert(&(i, j), num_arrangements);
         }
     }
 
-    cache.get_unchecked(0, 0).unwrap()
+    *cache.get(&(0, 0))
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
