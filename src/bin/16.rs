@@ -1,4 +1,5 @@
 use advent_of_code::util::{Indexer, VecSet, VecTable};
+use rayon::prelude::*;
 use std::collections::VecDeque;
 
 advent_of_code::solution!(16);
@@ -188,7 +189,7 @@ pub fn part_two(input: &str) -> Option<u32> {
     }
 
     initial_beam_fronts
-        .iter()
+        .par_iter()
         .map(|&front| compute_energized_tiles(map.clone(), front))
         .max()
 }
