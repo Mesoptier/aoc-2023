@@ -152,22 +152,23 @@ pub fn part_one(input: &str) -> Option<usize> {
         (adjacency_list, forward_edges)
     };
 
-    'outer: for i in 0..forward_edges.len() {
-        let edge_i = forward_edges[i];
+    'outer: for edge_i in forward_edges {
         remove_edge(&mut adjacency_list, edge_i);
 
         // Build heuristic for path search in the inner loops
         let heuristic = distances_to_all_nodes(&adjacency_list, edge_i.1);
 
-        for j in (i + 1)..forward_edges.len() {
-            let edge_j = forward_edges[j];
+        // Find path from edge_i.0 to edge_i.1
+        let path_j = find_path(&adjacency_list, edge_i.0, edge_i.1, &heuristic).unwrap();
+
+        for edge_j in path_j {
             remove_edge(&mut adjacency_list, edge_j);
 
             // Find path from edge_i.0 to edge_i.1
-            let path = find_path(&adjacency_list, edge_i.0, edge_i.1, &heuristic).unwrap();
+            let path_k = find_path(&adjacency_list, edge_i.0, edge_i.1, &heuristic).unwrap();
 
             // If there is a bridge, it must be along this path
-            for edge_k in path {
+            for edge_k in path_k {
                 remove_edge(&mut adjacency_list, edge_k);
 
                 if find_path(&adjacency_list, edge_i.0, edge_i.1, &heuristic).is_none() {
