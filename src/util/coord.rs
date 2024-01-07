@@ -82,6 +82,7 @@ impl DirectedCoord {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct DirectedCoordIndexer {
     pub width: usize,
     pub height: usize,
