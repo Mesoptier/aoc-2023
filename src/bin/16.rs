@@ -1,7 +1,5 @@
 use std::collections::VecDeque;
 
-use rayon::prelude::*;
-
 use advent_of_code::util::coord::{
     Coord, CoordIndexer, DirectedCoord, DirectedCoordIndexer, Direction,
 };
@@ -120,7 +118,7 @@ pub fn part_two(input: &str) -> Option<u32> {
     }
 
     initial_beam_fronts
-        .par_iter()
+        .iter()
         .map(|&front| compute_energized_tiles(map.clone(), front))
         .max()
 }
