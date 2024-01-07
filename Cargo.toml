@@ -10,6 +10,9 @@ publish = false
 [lib]
 doctest = false
 
+[profile.release]
+lto = true
+
 [profile.dhat]
 inherits = "release"
 debug = 1
