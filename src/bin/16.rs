@@ -1,3 +1,4 @@
+use itertools::chain;
 use std::collections::VecDeque;
 
 use advent_of_code::util::coord::{
@@ -11,23 +12,23 @@ fn compute_energized_tiles(
     map: VecTable<Coord, char, CoordIndexer>,
     initial_beam_front: DirectedCoord,
 ) -> u32 {
-    let mut beam_fronts = VecDeque::<DirectedCoord>::new();
-    beam_fronts.push_front(initial_beam_front);
-
     let coord_indexer = *map.indexer();
     let directed_coord_indexer = DirectedCoordIndexer::from(coord_indexer);
 
     let mut energized_count = 0;
     let mut energized = VecSet::new(coord_indexer);
-    let mut visited = VecSet::new(directed_coord_indexer);
 
-    while let Some(beam) = beam_fronts.pop_front() {
-        if energized.insert(beam.coord) {
+    let mut queue = VecDeque::<DirectedCoord>::new();
+    let mut visited = VecSet::new(directed_coord_indexer);
+    queue.push_front(initial_beam_front);
+    visited.insert(initial_beam_front);
+
+    while let Some(beam_front) = queue.pop_front() {
+        if energized.insert(beam_front.coord) {
             energized_count += 1;
         }
-        visited.insert(beam);
 
-        let next_directions = match (map[beam.coord], beam.direction) {
+        let next_directions = match (map[beam_front.coord], beam_front.direction) {
             ('/', Direction::Up) => [Some(Direction::Right), None],
             ('/', Direction::Right) => [Some(Direction::Up), None],
             ('/', Direction::Down) => [Some(Direction::Left), None],
@@ -46,10 +47,10 @@ fn compute_energized_tiles(
         };
 
         for direction in next_directions.into_iter().flatten() {
-            if let Some(coord) = coord_indexer.step(beam.coord, direction) {
+            if let Some(coord) = coord_indexer.step(beam_front.coord, direction) {
                 let next_beam = DirectedCoord { coord, direction };
-                if !visited.contains(&next_beam) {
-                    beam_fronts.push_front(next_beam);
+                if visited.insert(next_beam) {
+                    queue.push_front(next_beam);
                 }
             }
         }
@@ -95,32 +96,26 @@ pub fn part_two(input: &str) -> Option<u32> {
     let width = map.indexer().width;
     let height = map.indexer().height;
 
-    let mut initial_beam_fronts = vec![];
-    for x in 0..width {
-        initial_beam_fronts.push(DirectedCoord {
+    chain![
+        (0..width).map(|x| DirectedCoord {
             coord: Coord { x, y: 0 },
             direction: Direction::Down,
-        });
-        initial_beam_fronts.push(DirectedCoord {
+        }),
+        (0..width).map(|x| DirectedCoord {
             coord: Coord { x, y: height - 1 },
             direction: Direction::Up,
-        });
-    }
-    for y in 0..height {
-        initial_beam_fronts.push(DirectedCoord {
+        }),
+        (0..height).map(|y| DirectedCoord {
             coord: Coord { x: 0, y },
             direction: Direction::Right,
-        });
-        initial_beam_fronts.push(DirectedCoord {
+        }),
+        (0..height).map(|y| DirectedCoord {
             coord: Coord { x: width - 1, y },
             direction: Direction::Left,
-        });
-    }
-
-    initial_beam_fronts
-        .iter()
-        .map(|&front| compute_energized_tiles(map.clone(), front))
-        .max()
+        }),
+    ]
+    .map(|beam_front| compute_energized_tiles(map.clone(), beam_front))
+    .max()
 }
 
 #[cfg(test)]
