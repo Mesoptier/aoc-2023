@@ -1,11 +1,12 @@
-use nom::branch::alt;
-use nom::character::complete::{char, line_ending};
-use nom::combinator::value;
-use nom::multi::{many1, separated_list1};
-use nom::IResult;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
-use std::marker::PhantomData;
+use std::hash::Hash;
+
+use itertools::Itertools;
+
+use advent_of_code::util::coord::{
+    Coord, CoordIndexer, Direction, Down, FlippedCoordIndexer, Left, Right, Up,
+};
+use advent_of_code::util::{Indexer, VecTable};
 
 advent_of_code::solution!(14);
 
@@ -16,204 +17,57 @@ enum Tile {
     Empty,
 }
 
-trait TileGrid {
-    fn width(&self) -> usize;
-    fn height(&self) -> usize;
-    fn get_unchecked(&self, x: usize, y: usize) -> Tile;
-    fn set_unchecked(&mut self, x: usize, y: usize, tile: Tile);
+impl Tile {
+    fn from_char(c: char) -> Option<Tile> {
+        match c {
+            '.' => Some(Tile::Empty),
+            'O' => Some(Tile::RoundedRock),
+            '#' => Some(Tile::CubeShapedRock),
+            _ => None,
+        }
+    }
 }
 
-#[derive(Clone, Eq, PartialEq)]
-struct Grid {
-    tiles: Vec<Tile>,
-    width: usize,
-    height: usize,
-    total_load: usize,
-}
-
-impl Grid {
-    fn new(tiles: Vec<Vec<Tile>>) -> Self {
-        let width = tiles[0].len();
-        let height = tiles.len();
-
-        let mut total_load = 0;
-        for y in 0..height {
-            for x in 0..width {
-                if tiles[y][x] == Tile::RoundedRock {
-                    let load = height - y;
-                    total_load += load;
-                }
+fn parse_input(input: &str) -> VecTable<Coord, Tile, CoordIndexer> {
+    let mut width = None;
+    let data = input
+        .lines()
+        .flat_map(|line| {
+            if width.is_none() {
+                width = Some(line.len());
+            } else {
+                debug_assert_eq!(width, Some(line.len()));
             }
-        }
-
-        Self {
-            width,
-            height,
-            tiles: tiles.into_iter().flatten().collect(),
-            total_load,
-        }
-    }
-
-    fn total_load(&self) -> usize {
-        self.total_load
-    }
+            line.chars().map(|c| Tile::from_char(c).unwrap())
+        })
+        .collect_vec();
+    let width = width.unwrap();
+    let height = data.len() / width;
+    let indexer = CoordIndexer::new(width, height);
+    VecTable::from_vec(data, indexer)
 }
 
-impl TileGrid for Grid {
-    fn width(&self) -> usize {
-        self.width
-    }
+fn slide_rounded_rocks<D>(
+    grid: &mut VecTable<Coord, Tile, FlippedCoordIndexer<D>, &mut [Tile]>,
+) -> usize
+where
+    FlippedCoordIndexer<D>: Indexer<Coord>,
+{
+    let width = grid.indexer().width();
+    let height = grid.indexer().height();
 
-    fn height(&self) -> usize {
-        self.height
-    }
+    let mut total_load = 0;
 
-    fn get_unchecked(&self, x: usize, y: usize) -> Tile {
-        self.tiles[y * self.width + x]
-    }
-
-    fn set_unchecked(&mut self, x: usize, y: usize, tile: Tile) {
-        match (self.get_unchecked(x, y), tile) {
-            (Tile::RoundedRock, Tile::Empty) => {
-                let load = self.height - y;
-                self.total_load -= load;
-            }
-            (Tile::Empty, Tile::RoundedRock) => {
-                let load = self.height - y;
-                self.total_load += load;
-            }
-            _ => {}
-        }
-
-        self.tiles[y * self.width + x] = tile;
-    }
-}
-
-impl Hash for Grid {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.total_load.hash(state);
-    }
-}
-
-/// A view into a grid that flips the x and y axis such that the `direction` side of the original grid is now the top.
-struct FlippedGridView<'a, G, D> {
-    grid: &'a mut G,
-    _direction: PhantomData<D>,
-}
-
-impl<'a, G, D> FlippedGridView<'a, G, D> {
-    fn new(grid: &'a mut G) -> Self {
-        Self {
-            grid,
-            _direction: PhantomData,
-        }
-    }
-}
-
-impl<'a, G: TileGrid> TileGrid for FlippedGridView<'a, G, North> {
-    fn width(&self) -> usize {
-        self.grid.width()
-    }
-
-    fn height(&self) -> usize {
-        self.grid.height()
-    }
-
-    fn get_unchecked(&self, x: usize, y: usize) -> Tile {
-        self.grid.get_unchecked(x, y)
-    }
-
-    fn set_unchecked(&mut self, x: usize, y: usize, tile: Tile) {
-        self.grid.set_unchecked(x, y, tile)
-    }
-}
-
-impl<'a, G: TileGrid> TileGrid for FlippedGridView<'a, G, West> {
-    fn width(&self) -> usize {
-        self.grid.height()
-    }
-
-    fn height(&self) -> usize {
-        self.grid.width()
-    }
-
-    fn get_unchecked(&self, x: usize, y: usize) -> Tile {
-        self.grid.get_unchecked(y, x)
-    }
-
-    fn set_unchecked(&mut self, x: usize, y: usize, tile: Tile) {
-        self.grid.set_unchecked(y, x, tile)
-    }
-}
-
-impl<'a, G: TileGrid> TileGrid for FlippedGridView<'a, G, South> {
-    fn width(&self) -> usize {
-        self.grid.width()
-    }
-
-    fn height(&self) -> usize {
-        self.grid.height()
-    }
-
-    fn get_unchecked(&self, x: usize, y: usize) -> Tile {
-        self.grid.get_unchecked(x, self.grid.height() - 1 - y)
-    }
-
-    fn set_unchecked(&mut self, x: usize, y: usize, tile: Tile) {
-        self.grid.set_unchecked(x, self.grid.height() - 1 - y, tile)
-    }
-}
-
-impl<'a, G: TileGrid> TileGrid for FlippedGridView<'a, G, East> {
-    fn width(&self) -> usize {
-        self.grid.height()
-    }
-
-    fn height(&self) -> usize {
-        self.grid.width()
-    }
-
-    fn get_unchecked(&self, x: usize, y: usize) -> Tile {
-        self.grid.get_unchecked(self.grid.width() - 1 - y, x)
-    }
-
-    fn set_unchecked(&mut self, x: usize, y: usize, tile: Tile) {
-        self.grid.set_unchecked(self.grid.width() - 1 - y, x, tile)
-    }
-}
-
-struct North;
-struct West;
-struct South;
-struct East;
-
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
-enum Direction {
-    North,
-    West,
-    South,
-    East,
-}
-
-fn parse_input(input: &str) -> IResult<&str, Vec<Vec<Tile>>> {
-    separated_list1(
-        line_ending,
-        many1(alt((
-            value(Tile::RoundedRock, char('O')),
-            value(Tile::CubeShapedRock, char('#')),
-            value(Tile::Empty, char('.')),
-        ))),
-    )(input)
-}
-
-fn slide_rounded_rocks<G: TileGrid>(grid: &mut G) {
-    for x in 0..grid.width() {
+    for x in 0..width {
         let mut slide_to_y = 0;
-        for y in 0..grid.height() {
-            match grid.get_unchecked(x, y) {
+        for y in 0..height {
+            match grid.get(&Coord { x, y }) {
                 Tile::RoundedRock => {
-                    grid.set_unchecked(x, y, Tile::Empty);
-                    grid.set_unchecked(x, slide_to_y, Tile::RoundedRock);
+                    grid.insert(&Coord { x, y }, Tile::Empty);
+                    grid.insert(&Coord { x, y: slide_to_y }, Tile::RoundedRock);
+
+                    let load = height - slide_to_y;
+                    total_load += load;
                     slide_to_y += 1;
                 }
                 Tile::CubeShapedRock => {
@@ -223,54 +77,102 @@ fn slide_rounded_rocks<G: TileGrid>(grid: &mut G) {
             }
         }
     }
+
+    total_load
+}
+
+fn flip_total_load(total_load: usize, height: usize, num_rounded_rocks: usize) -> usize {
+    num_rounded_rocks * (height + 1) - total_load
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct CacheKey {
+    tiles: Vec<Tile>,
+    direction: Direction,
+    north_total_load: usize,
+    west_total_load: usize,
+}
+
+impl Hash for CacheKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // self.tiles.hash(state);
+        self.direction.hash(state);
+        self.north_total_load.hash(state);
+        self.west_total_load.hash(state);
+    }
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
-    let (_, map) = parse_input(input).unwrap();
-    let mut grid = Grid::new(map);
-
-    slide_rounded_rocks(&mut FlippedGridView::<_, North>::new(&mut grid));
-
-    Some(grid.total_load())
+    let mut grid = parse_input(input);
+    let total_load =
+        slide_rounded_rocks(&mut grid.view_mut(FlippedCoordIndexer::<Up>::new(*grid.indexer())));
+    Some(total_load)
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
-    let (_, map) = parse_input(input).unwrap();
-    let mut grid = Grid::new(map);
+    let mut grid = parse_input(input);
+
+    let num_rounded_rocks = grid
+        .values()
+        .filter(|&&tile| tile == Tile::RoundedRock)
+        .count();
 
     let mut directions = [
-        Direction::North,
-        Direction::West,
-        Direction::South,
-        Direction::East,
+        Direction::Up,
+        Direction::Left,
+        Direction::Down,
+        Direction::Right,
     ]
     .into_iter()
     .cycle();
 
     let mut steps = 0;
-    let mut cache = HashMap::<(Grid, Direction), usize>::new();
+    let mut cache = HashMap::<CacheKey, usize>::new();
     let mut total_loads = vec![];
+
+    let mut north_total_load = 0;
+    let mut west_total_load = 0;
 
     for direction in directions.by_ref() {
         match direction {
-            Direction::North => {
-                slide_rounded_rocks(&mut FlippedGridView::<_, North>::new(&mut grid))
+            Direction::Up => {
+                let indexer = FlippedCoordIndexer::<Up>::new(*grid.indexer());
+                north_total_load = slide_rounded_rocks(&mut grid.view_mut(indexer));
             }
-            Direction::West => slide_rounded_rocks(&mut FlippedGridView::<_, West>::new(&mut grid)),
-            Direction::South => {
-                slide_rounded_rocks(&mut FlippedGridView::<_, South>::new(&mut grid))
+            Direction::Left => {
+                let indexer = FlippedCoordIndexer::<Left>::new(*grid.indexer());
+                west_total_load = slide_rounded_rocks(&mut grid.view_mut(indexer));
             }
-            Direction::East => slide_rounded_rocks(&mut FlippedGridView::<_, East>::new(&mut grid)),
+            Direction::Down => {
+                let indexer = FlippedCoordIndexer::<Down>::new(*grid.indexer());
+                let south_total_load = slide_rounded_rocks(&mut grid.view_mut(indexer));
+                north_total_load =
+                    flip_total_load(south_total_load, grid.indexer().height, num_rounded_rocks);
+            }
+            Direction::Right => {
+                let indexer = FlippedCoordIndexer::<Right>::new(*grid.indexer());
+                let east_total_load = slide_rounded_rocks(&mut grid.view_mut(indexer));
+                west_total_load =
+                    flip_total_load(east_total_load, grid.indexer().width, num_rounded_rocks);
+            }
         }
         steps += 1;
 
-        if let Some(prev_steps) = cache.insert((grid.clone(), direction), steps) {
+        if let Some(prev_steps) = cache.insert(
+            CacheKey {
+                tiles: grid.clone().to_vec(),
+                direction,
+                north_total_load,
+                west_total_load,
+            },
+            steps,
+        ) {
             let cycle = steps - prev_steps;
             let steps_remaining = (4_000_000_000 - steps) % cycle;
             return Some(total_loads[total_loads.len() - cycle + steps_remaining]);
         }
 
-        total_loads.push(grid.total_load());
+        total_loads.push(north_total_load);
     }
 
     None

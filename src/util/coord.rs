@@ -1,5 +1,7 @@
 use crate::util::Indexer;
+use std::marker::PhantomData;
 
+// TODO: Rename to North, East, South, West
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
     Up,
@@ -7,6 +9,11 @@ pub enum Direction {
     Down,
     Left,
 }
+
+pub struct Up;
+pub struct Right;
+pub struct Down;
+pub struct Left;
 
 impl Direction {
     pub fn opposite(self) -> Self {
@@ -31,7 +38,7 @@ impl Coord {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub struct CoordIndexer {
     pub width: usize,
     pub height: usize,
@@ -64,6 +71,78 @@ impl CoordIndexer {
             Direction::Left if x > 0 => Some(Coord { x: x - 1, y }),
             _ => None,
         }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct FlippedCoordIndexer<D> {
+    indexer: CoordIndexer,
+    _direction: PhantomData<D>,
+}
+
+impl<D> FlippedCoordIndexer<D> {
+    pub fn new(indexer: CoordIndexer) -> Self {
+        Self {
+            indexer,
+            _direction: PhantomData,
+        }
+    }
+
+    pub fn width(&self) -> usize {
+        self.indexer.width
+    }
+
+    pub fn height(&self) -> usize {
+        self.indexer.height
+    }
+}
+
+impl Indexer<Coord> for FlippedCoordIndexer<Up> {
+    fn len(&self) -> usize {
+        self.indexer.len()
+    }
+
+    fn index_for(&self, coord: &Coord) -> usize {
+        self.indexer.index_for(coord)
+    }
+}
+
+impl Indexer<Coord> for FlippedCoordIndexer<Right> {
+    fn len(&self) -> usize {
+        self.indexer.len()
+    }
+
+    fn index_for(&self, coord: &Coord) -> usize {
+        let Coord { x, y } = *coord;
+        self.indexer.index_for(&Coord {
+            x: self.indexer.width - 1 - y,
+            y: x,
+        })
+    }
+}
+
+impl Indexer<Coord> for FlippedCoordIndexer<Down> {
+    fn len(&self) -> usize {
+        self.indexer.len()
+    }
+
+    fn index_for(&self, coord: &Coord) -> usize {
+        let Coord { x, y } = *coord;
+        self.indexer.index_for(&Coord {
+            x,
+            y: self.indexer.height - 1 - y,
+        })
+    }
+}
+
+impl Indexer<Coord> for FlippedCoordIndexer<Left> {
+    fn len(&self) -> usize {
+        self.indexer.len()
+    }
+
+    fn index_for(&self, coord: &Coord) -> usize {
+        let Coord { x, y } = *coord;
+        self.indexer.index_for(&Coord { x: y, y: x })
     }
 }
 

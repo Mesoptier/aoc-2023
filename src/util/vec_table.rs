@@ -1,18 +1,19 @@
 use crate::util::indexer::Indexer;
+use std::borrow::{Borrow, BorrowMut};
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
-#[derive(Clone)]
-pub struct VecTable<K, V, I> {
-    data: Vec<V>,
+#[derive(Clone, Eq, PartialEq)]
+pub struct VecTable<K, V, I, D = Vec<V>> {
+    data: D,
     indexer: I,
-    _phantom: PhantomData<K>,
+    _phantom: PhantomData<(K, V)>,
 }
 
 impl<K, V, I> VecTable<K, V, I>
 where
-    I: Indexer<K>,
     V: Default,
+    I: Indexer<K>,
 {
     pub fn new(indexer: I) -> Self {
         let mut data = Vec::with_capacity(indexer.len());
@@ -56,21 +57,51 @@ where
         }
     }
 
+    pub fn to_vec(self) -> Vec<V> {
+        self.data
+    }
+}
+
+impl<K, V, I, D> VecTable<K, V, I, D>
+where
+    I: Indexer<K>,
+    D: Borrow<[V]>,
+{
     /// Returns a reference to the value associated with the given key.
     pub fn get(&self, key: &K) -> &V {
         let index = self.indexer.index_for(key);
         unsafe {
             // SAFETY: `index` is guaranteed to be in bounds.
-            self.data.get_unchecked(index)
+            self.data.borrow().get_unchecked(index)
         }
     }
 
+    /// Returns an iterator over the values in the table.
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.data.borrow().iter()
+    }
+
+    pub fn view<J: Indexer<K>>(&self, indexer: J) -> VecTable<K, V, J, &[V]> {
+        assert_eq!(self.indexer.len(), indexer.len());
+        VecTable {
+            data: self.data.borrow(),
+            indexer,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<K, V, I, D> VecTable<K, V, I, D>
+where
+    I: Indexer<K>,
+    D: BorrowMut<[V]>,
+{
     /// Returns a mutable reference to the value associated with the given key.
     pub fn get_mut(&mut self, key: &K) -> &mut V {
         let index = self.indexer.index_for(key);
         unsafe {
             // SAFETY: `index` is guaranteed to be in bounds.
-            self.data.get_unchecked_mut(index)
+            self.data.borrow_mut().get_unchecked_mut(index)
         }
     }
 
@@ -78,23 +109,28 @@ where
     pub fn insert(&mut self, key: &K, value: V) -> V {
         std::mem::replace(self.get_mut(key), value)
     }
+
+    pub fn view_mut<J: Indexer<K>>(&mut self, indexer: J) -> VecTable<K, V, J, &mut [V]> {
+        assert_eq!(self.indexer.len(), indexer.len());
+        VecTable {
+            data: self.data.borrow_mut(),
+            indexer,
+            _phantom: PhantomData,
+        }
+    }
 }
 
-impl<K, V, I> VecTable<K, V, I> {
+impl<K, V, I, D> VecTable<K, V, I, D> {
     /// Returns a reference to the underlying indexer.
     pub fn indexer(&self) -> &I {
         &self.indexer
     }
-
-    /// Returns an iterator over the values in the table.
-    pub fn values(&self) -> impl Iterator<Item = &V> {
-        self.data.iter()
-    }
 }
 
-impl<K, V, I> Index<K> for VecTable<K, V, I>
+impl<K, V, I, D> Index<K> for VecTable<K, V, I, D>
 where
     I: Indexer<K>,
+    D: Borrow<[V]>,
 {
     type Output = V;
 
@@ -103,9 +139,10 @@ where
     }
 }
 
-impl<K, V, I> IndexMut<K> for VecTable<K, V, I>
+impl<K, V, I, D> IndexMut<K> for VecTable<K, V, I, D>
 where
     I: Indexer<K>,
+    D: BorrowMut<[V]>,
 {
     fn index_mut(&mut self, key: K) -> &mut Self::Output {
         self.get_mut(&key)
