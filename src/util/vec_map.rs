@@ -35,6 +35,10 @@ where
         self.table.get_mut(key).take()
     }
 
+    pub fn entry(&mut self, key: &K) -> Entry<V> {
+        Entry(self.table.get_mut(key))
+    }
+
     /// Returns the number of elements in the map.
     pub fn len(&self) -> usize {
         self.table.values().filter(|v| v.is_some()).count()
@@ -43,5 +47,24 @@ where
     /// Returns `true` if the map contains no elements.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+pub struct Entry<'a, V>(&'a mut Option<V>);
+
+impl<'a, V> Entry<'a, V> {
+    pub fn or_insert(self, value: V) -> &'a mut V {
+        self.0.get_or_insert(value)
+    }
+
+    pub fn or_insert_with<F: FnOnce() -> V>(self, f: F) -> &'a mut V {
+        self.0.get_or_insert_with(f)
+    }
+
+    pub fn and_modify<F: FnOnce(&mut V)>(self, f: F) -> &'a mut V {
+        if let Some(value) = self.0.as_mut() {
+            f(value);
+        }
+        self.0.as_mut().unwrap()
     }
 }
