@@ -7,3 +7,25 @@ pub trait Indexer<K> {
     /// This index is guaranteed to be in bounds (i.e. less than `len()`).
     fn index_for(&self, key: &K) -> usize;
 }
+
+pub struct LinearIndexer {
+    len: usize,
+}
+
+impl LinearIndexer {
+    pub fn new(len: usize) -> Self {
+        Self { len }
+    }
+}
+
+impl Indexer<usize> for LinearIndexer {
+    #[inline]
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    #[inline]
+    fn index_for(&self, key: &usize) -> usize {
+        *key
+    }
+}

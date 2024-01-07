@@ -1,8 +1,10 @@
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
 
-use advent_of_code::util::coord::{Coord, CoordIndexer, DirectedCoord, Direction};
-use advent_of_code::util::VecTable;
+use advent_of_code::util::coord::{
+    Coord, CoordIndexer, DirectedCoord, DirectedCoordIndexer, Direction,
+};
+use advent_of_code::util::{LinearIndexer, VecMap, VecTable};
 
 advent_of_code::solution!(17);
 
@@ -82,7 +84,11 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
         state: State::new(0, 0, Direction::Right, 0),
     });
 
-    let mut best_costs = HashMap::<State, u32>::new();
+    let mut best_costs: VecMap<
+        DirectedCoord,
+        VecMap<usize, u32, LinearIndexer>,
+        DirectedCoordIndexer,
+    > = VecMap::new(DirectedCoordIndexer::new(width, height));
 
     while let Some(entry) = min_heap.pop() {
         let Entry { cost, state } = entry;
@@ -100,15 +106,20 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
             return Some(cost);
         }
 
-        if let Some(best_cost) = best_costs.get(&state) {
-            if *best_cost <= cost {
+        // Check if we already found a better path to this state, and if not, update the best cost
+        match best_costs
+            .entry(&state.directed_coord)
+            .get_or_insert_with(|| VecMap::new(LinearIndexer::new(if ultra { 10 } else { 4 })))
+            .entry(&state.direction_steps)
+        {
+            Some(best_cost) if *best_cost <= cost => {
                 // Already found a better path to this state
                 continue;
             }
+            entry => {
+                *entry = Some(cost);
+            }
         }
-
-        // Update the best cost for this state
-        best_costs.insert(state, cost);
 
         for next_direction in [
             Direction::Up,
