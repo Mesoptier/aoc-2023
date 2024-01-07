@@ -27,7 +27,7 @@ fn compute_energized_tiles(
     energized_count += 1;
 
     while let Some(node) = queue.pop_front() {
-        let next_nodes = cache.entry(&node).or_insert_with(|| {
+        let next_nodes = cache.entry(&node).get_or_insert_with(|| {
             let next_directions = match (map[node.coord], node.direction) {
                 ('/', Direction::Up) => [Some(Direction::Right), None],
                 ('/', Direction::Right) => [Some(Direction::Up), None],
