@@ -9,7 +9,7 @@ use advent_of_code::util::{VecSet, VecTable};
 advent_of_code::solution!(16);
 
 fn compute_energized_tiles(
-    map: VecTable<Coord, char, CoordIndexer>,
+    map: &VecTable<Coord, char, CoordIndexer>,
     initial_beam_front: DirectedCoord,
 ) -> u32 {
     let coord_indexer = *map.indexer();
@@ -81,7 +81,7 @@ fn parse_input(input: &str) -> VecTable<Coord, char, CoordIndexer> {
 pub fn part_one(input: &str) -> Option<u32> {
     let map = parse_input(input);
     compute_energized_tiles(
-        map,
+        &map,
         DirectedCoord {
             coord: Coord { x: 0, y: 0 },
             direction: Direction::Right,
@@ -114,7 +114,7 @@ pub fn part_two(input: &str) -> Option<u32> {
             direction: Direction::Left,
         }),
     ]
-    .map(|beam_front| compute_energized_tiles(map.clone(), beam_front))
+    .map(|beam_front| compute_energized_tiles(&map, beam_front))
     .max()
 }
 
