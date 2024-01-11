@@ -3,179 +3,200 @@ use std::hash::Hash;
 
 use itertools::Itertools;
 
-use advent_of_code::util::coord::{
-    Coord, CoordIndexer, Direction, Down, FlippedCoordIndexer, Left, Right, Up,
-};
-use advent_of_code::util::{Indexer, VecTable};
-
 advent_of_code::solution!(14);
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
-enum Tile {
-    RoundedRock,
-    CubeShapedRock,
-    Empty,
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+struct Segment {
+    start: usize, // inclusive
+    end: usize,   // exclusive
+    num_rounded_rocks: usize,
 }
 
-impl Tile {
-    fn from_char(c: char) -> Option<Tile> {
-        match c {
-            '.' => Some(Tile::Empty),
-            'O' => Some(Tile::RoundedRock),
-            '#' => Some(Tile::CubeShapedRock),
-            _ => None,
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+struct Field {
+    vertical_segments: Vec<Vec<Segment>>,
+    horizontal_segments: Vec<Vec<Segment>>,
+}
+
+impl Field {
+    fn from_input(input: &str) -> Self {
+        let grid = input
+            .lines()
+            .map(|line| line.chars().collect_vec())
+            .collect_vec();
+
+        let dim = grid.len();
+        assert_eq!(grid[0].len(), grid.len());
+
+        let build_segments = |vertical: bool| -> Vec<Vec<Segment>> {
+            let mut segments = vec![vec![]; dim];
+
+            for i in 0..dim {
+                let mut segment_start = None;
+                let mut num_rounded_rocks = 0;
+
+                for j in 0..dim {
+                    let (x, y) = if vertical { (i, j) } else { (j, i) };
+                    let c = grid[y][x];
+
+                    if c != '#' && segment_start.is_none() {
+                        segment_start = Some(j);
+                    }
+                    if c == 'O' && vertical {
+                        // Rounded rocks are only added for vertical segments, since the first slide direction is always up
+                        num_rounded_rocks += 1;
+                    }
+                    if c == '#' && segment_start.is_some() {
+                        segments[i].push(Segment {
+                            start: segment_start.unwrap(),
+                            end: j,
+                            num_rounded_rocks,
+                        });
+                        segment_start = None;
+                        num_rounded_rocks = 0;
+                    }
+                }
+
+                if let Some(segment_start) = segment_start {
+                    segments[i].push(Segment {
+                        start: segment_start,
+                        end: dim,
+                        num_rounded_rocks,
+                    });
+                }
+            }
+
+            segments
+        };
+
+        Self {
+            vertical_segments: build_segments(true),
+            horizontal_segments: build_segments(false),
         }
     }
-}
 
-fn parse_input(input: &str) -> VecTable<Coord, Tile, CoordIndexer> {
-    let mut width = None;
-    let data = input
-        .lines()
-        .flat_map(|line| {
-            if width.is_none() {
-                width = Some(line.len());
-            } else {
-                debug_assert_eq!(width, Some(line.len()));
-            }
-            line.chars().map(|c| Tile::from_char(c).unwrap())
-        })
-        .collect_vec();
-    let width = width.unwrap();
-    let height = data.len() / width;
-    let indexer = CoordIndexer::new(width, height);
-    VecTable::from_vec(data, indexer)
-}
+    fn slide_rounded_rocks(&mut self, vertical: bool, reverse: bool) {
+        let (segments, other_segments) = if vertical {
+            (&mut self.vertical_segments, &mut self.horizontal_segments)
+        } else {
+            (&mut self.horizontal_segments, &mut self.vertical_segments)
+        };
 
-fn slide_rounded_rocks<D>(
-    grid: &mut VecTable<Coord, Tile, FlippedCoordIndexer<D>, &mut [Tile]>,
-) -> usize
-where
-    FlippedCoordIndexer<D>: Indexer<Coord>,
-{
-    let width = grid.indexer().width();
-    let height = grid.indexer().height();
+        for i in 0..segments.len() {
+            for segment in &mut segments[i] {
+                // Range of rounded rocks in this segment
+                let (start_j, end_j) = if reverse {
+                    (segment.end - segment.num_rounded_rocks, segment.end)
+                } else {
+                    (segment.start, segment.start + segment.num_rounded_rocks)
+                };
 
-    let mut total_load = 0;
-
-    for x in 0..width {
-        let mut slide_to_y = 0;
-        for y in 0..height {
-            match grid.get(&Coord { x, y }) {
-                Tile::RoundedRock => {
-                    grid.insert(&Coord { x, y }, Tile::Empty);
-                    grid.insert(&Coord { x, y: slide_to_y }, Tile::RoundedRock);
-
-                    let load = height - slide_to_y;
-                    total_load += load;
-                    slide_to_y += 1;
+                // Transfer rounded rocks to intersecting segments
+                for j in start_j..end_j {
+                    // TODO: Binary search (but really, this could be a lookup table)
+                    for other_segment in &mut other_segments[j] {
+                        if other_segment.start <= i && i < other_segment.end {
+                            other_segment.num_rounded_rocks += 1;
+                        }
+                    }
                 }
-                Tile::CubeShapedRock => {
-                    slide_to_y = y + 1;
-                }
-                Tile::Empty => {}
+
+                segment.num_rounded_rocks = 0;
             }
         }
     }
 
-    total_load
-}
+    fn total_load(&self, vertical: bool) -> usize {
+        if vertical {
+            let dim = self.vertical_segments.len();
+            self.vertical_segments
+                .iter()
+                .map(|segments| {
+                    segments
+                        .iter()
+                        .map(|segment| {
+                            (segment.start..segment.end)
+                                .take(segment.num_rounded_rocks)
+                                .map(|y| dim - y)
+                                .sum::<usize>()
+                        })
+                        .sum::<usize>()
+                })
+                .sum()
+        } else {
+            let dim = self.horizontal_segments.len();
+            self.horizontal_segments
+                .iter()
+                .enumerate()
+                .map(|(y, segments)| {
+                    segments
+                        .iter()
+                        .map(|segment| segment.num_rounded_rocks * (dim - y))
+                        .sum::<usize>()
+                })
+                .sum()
+        }
+    }
 
-fn flip_total_load(total_load: usize, height: usize, num_rounded_rocks: usize) -> usize {
-    num_rounded_rocks * (height + 1) - total_load
-}
-
-#[derive(Clone, Eq, PartialEq)]
-struct CacheKey {
-    tiles: Vec<Tile>,
-    direction: Direction,
-    north_total_load: usize,
-    west_total_load: usize,
-}
-
-impl Hash for CacheKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // self.tiles.hash(state);
-        self.direction.hash(state);
-        self.north_total_load.hash(state);
-        self.west_total_load.hash(state);
+    fn print(&self) {
+        let dim = self.vertical_segments.len();
+        for y in 0..dim {
+            for x in 0..dim {
+                if let Some(segment) = self.vertical_segments[x]
+                    .iter()
+                    .find(|segment| segment.start <= y && y < segment.end)
+                {
+                    if y < segment.start + segment.num_rounded_rocks {
+                        print!("O");
+                    } else {
+                        print!(".");
+                    }
+                } else {
+                    print!("#");
+                }
+            }
+            println!();
+        }
+        println!();
     }
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
-    let mut grid = parse_input(input);
-    let total_load =
-        slide_rounded_rocks(&mut grid.view_mut(FlippedCoordIndexer::<Up>::new(*grid.indexer())));
-    Some(total_load)
+    let field = Field::from_input(input);
+    Some(field.total_load(true))
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
-    let mut grid = parse_input(input);
+    let mut field = Field::from_input(input);
 
-    let num_rounded_rocks = grid
-        .values()
-        .filter(|&&tile| tile == Tile::RoundedRock)
-        .count();
-
-    let mut directions = [
-        Direction::Up,
-        Direction::Left,
-        Direction::Down,
-        Direction::Right,
-    ]
-    .into_iter()
-    .cycle();
-
-    let mut steps = 0;
-    let mut cache = HashMap::<CacheKey, usize>::new();
+    let mut cycles = 0;
+    let mut cache = HashMap::<Field, usize>::new();
     let mut total_loads = vec![];
 
-    let mut north_total_load = 0;
-    let mut west_total_load = 0;
+    // First cycle
+    // Sliding north is implicit in loading the field
+    field.slide_rounded_rocks(true, false);
+    field.slide_rounded_rocks(false, false);
+    field.slide_rounded_rocks(true, true);
+    cycles += 1;
 
-    for direction in directions.by_ref() {
-        match direction {
-            Direction::Up => {
-                let indexer = FlippedCoordIndexer::<Up>::new(*grid.indexer());
-                north_total_load = slide_rounded_rocks(&mut grid.view_mut(indexer));
-            }
-            Direction::Left => {
-                let indexer = FlippedCoordIndexer::<Left>::new(*grid.indexer());
-                west_total_load = slide_rounded_rocks(&mut grid.view_mut(indexer));
-            }
-            Direction::Down => {
-                let indexer = FlippedCoordIndexer::<Down>::new(*grid.indexer());
-                let south_total_load = slide_rounded_rocks(&mut grid.view_mut(indexer));
-                north_total_load =
-                    flip_total_load(south_total_load, grid.indexer().height, num_rounded_rocks);
-            }
-            Direction::Right => {
-                let indexer = FlippedCoordIndexer::<Right>::new(*grid.indexer());
-                let east_total_load = slide_rounded_rocks(&mut grid.view_mut(indexer));
-                west_total_load =
-                    flip_total_load(east_total_load, grid.indexer().width, num_rounded_rocks);
-            }
-        }
-        steps += 1;
+    loop {
+        field.slide_rounded_rocks(false, true);
+        field.slide_rounded_rocks(true, false);
+        field.slide_rounded_rocks(false, false);
+        field.slide_rounded_rocks(true, true);
 
-        if let Some(prev_steps) = cache.insert(
-            CacheKey {
-                tiles: grid.clone().to_vec(),
-                direction,
-                north_total_load,
-                west_total_load,
-            },
-            steps,
-        ) {
-            let cycle = steps - prev_steps;
-            let steps_remaining = (4_000_000_000 - steps) % cycle;
-            return Some(total_loads[total_loads.len() - cycle + steps_remaining]);
+        let total_load = field.total_load(false);
+        cycles += 1;
+
+        if let Some(prev_cycles) = cache.insert(field.clone(), cycles) {
+            let cycles_repeat = cycles - prev_cycles;
+            let cycles_remaining = (1_000_000_000 - cycles) % cycles_repeat;
+            return Some(total_loads[total_loads.len() - cycles_repeat + cycles_remaining]);
         }
 
-        total_loads.push(north_total_load);
+        total_loads.push(total_load);
     }
-
-    None
 }
 
 #[cfg(test)]
