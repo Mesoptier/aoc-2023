@@ -174,8 +174,13 @@ impl Field {
         }
     }
 
-    fn slide_rounded_rocks(&mut self, vertical: bool, reverse: bool) {
-        let (segments, counts, other_counts) = if vertical {
+    /// (from_vertical, from_reverse)
+    /// (false, true) = east -> north
+    /// (true, false) = north -> west
+    /// (false, false) = west -> south
+    /// (true, true) = south -> east
+    fn slide_rounded_rocks(&mut self, from_vertical: bool, from_reverse: bool) {
+        let (segments, counts, other_counts) = if from_vertical {
             (
                 &self.vertical_segments,
                 &mut self.vertical_counts,
@@ -190,7 +195,7 @@ impl Field {
         };
 
         for (segment, count) in izip!(segments, counts) {
-            let (offset_start, offset_end) = if reverse {
+            let (offset_start, offset_end) = if from_reverse {
                 (segment.j_range.len() - *count, segment.j_range.len())
             } else {
                 (0, *count)
@@ -227,6 +232,7 @@ impl Field {
 
 pub fn part_one(input: &str) -> Option<usize> {
     let field = Field::from_input(input);
+    // Sliding north is implicit in loading the field
     Some(field.total_load(false))
 }
 
@@ -239,18 +245,20 @@ pub fn part_two(input: &str) -> Option<usize> {
 
     // First cycle
     // Sliding north is implicit in loading the field
-    field.slide_rounded_rocks(true, false);
-    field.slide_rounded_rocks(false, false);
-    field.slide_rounded_rocks(true, true);
+    field.slide_rounded_rocks(true, false); // north -> west
+    field.slide_rounded_rocks(false, false); // west -> south
+    field.slide_rounded_rocks(true, true); // south -> east
     cycles += 1;
 
     loop {
-        field.slide_rounded_rocks(false, true);
-        field.slide_rounded_rocks(true, false);
-        field.slide_rounded_rocks(false, false);
+        field.slide_rounded_rocks(false, true); // east -> north
+        field.slide_rounded_rocks(true, false); // north -> west
+        field.slide_rounded_rocks(false, false); // west -> south
+
         // .total_load() assumes last slide direction was vertical, so we calculate it before sliding east
         let total_load = field.total_load(true);
-        field.slide_rounded_rocks(true, true);
+
+        field.slide_rounded_rocks(true, true); // south -> east
 
         cycles += 1;
 
