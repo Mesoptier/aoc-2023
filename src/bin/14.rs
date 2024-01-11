@@ -1,21 +1,29 @@
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::ops::Range;
 
-use itertools::Itertools;
+use itertools::{izip, Itertools};
 
 advent_of_code::solution!(14);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 struct Segment {
-    start: usize, // inclusive
-    end: usize,   // exclusive
-    num_rounded_rocks: usize,
+    i: usize,
+    j_range: Range<usize>,
+    // Index of the segment intersecting this one in the other direction for each j in j_range
+    lookup: Vec<usize>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 struct Field {
-    vertical_segments: Vec<Vec<Segment>>,
-    horizontal_segments: Vec<Vec<Segment>>,
+    dim: usize,
+
+    vertical_segments: Vec<Segment>,   // (i, j) = (x, y)
+    horizontal_segments: Vec<Segment>, // (i, j) = (y, x)
+
+    // Number of rounded rocks per vertical/horizontal segment
+    vertical_counts: Vec<usize>,
+    horizontal_counts: Vec<usize>,
 }
 
 impl Field {
@@ -28,149 +36,148 @@ impl Field {
         let dim = grid.len();
         assert_eq!(grid[0].len(), grid.len());
 
-        let build_segments = |vertical: bool| -> Vec<Vec<Segment>> {
-            let mut segments = vec![vec![]; dim];
+        let build_segments = |vertical: bool| -> (Vec<Segment>, Vec<usize>) {
+            let mut segments = vec![];
+            let mut counts = vec![];
 
             for i in 0..dim {
-                let mut segment_start = None;
-                let mut num_rounded_rocks = 0;
+                let mut j_range_start = None;
+                let mut count = 0;
 
                 for j in 0..dim {
                     let (x, y) = if vertical { (i, j) } else { (j, i) };
                     let c = grid[y][x];
 
-                    if c != '#' && segment_start.is_none() {
-                        segment_start = Some(j);
+                    if c != '#' && j_range_start.is_none() {
+                        j_range_start = Some(j);
                     }
                     if c == 'O' && vertical {
-                        // Rounded rocks are only added for vertical segments, since the first slide direction is always up
-                        num_rounded_rocks += 1;
+                        // Rounded rocks are only added for vertical segments,
+                        // since the first slide direction is always up
+                        count += 1;
                     }
-                    if c == '#' && segment_start.is_some() {
-                        segments[i].push(Segment {
-                            start: segment_start.unwrap(),
-                            end: j,
-                            num_rounded_rocks,
+                    if c == '#' && j_range_start.is_some() {
+                        segments.push(Segment {
+                            i,
+                            j_range: j_range_start.unwrap()..j,
+                            lookup: vec![],
                         });
-                        segment_start = None;
-                        num_rounded_rocks = 0;
+                        counts.push(count);
+
+                        j_range_start = None;
+                        count = 0;
                     }
                 }
 
-                if let Some(segment_start) = segment_start {
-                    segments[i].push(Segment {
-                        start: segment_start,
-                        end: dim,
-                        num_rounded_rocks,
+                if let Some(segment_start) = j_range_start {
+                    segments.push(Segment {
+                        i,
+                        j_range: segment_start..dim,
+                        lookup: vec![],
                     });
+                    counts.push(count);
                 }
             }
 
-            segments
+            (segments, counts)
         };
 
+        let build_lookup = |segments: &mut Vec<Segment>, other_segments: &Vec<Segment>| {
+            for segment in segments {
+                segment.lookup = vec![usize::MAX; segment.j_range.len()];
+
+                other_segments
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, other_segment)| {
+                        segment.j_range.contains(&other_segment.i)
+                            && other_segment.j_range.contains(&segment.i)
+                    })
+                    .for_each(|(idx, other_segment)| {
+                        let offset = other_segment.i - segment.j_range.start;
+                        segment.lookup[offset] = idx;
+                    });
+            }
+        };
+
+        // Build segments
+        let (mut vertical_segments, vertical_counts) = build_segments(true);
+        let (mut horizontal_segments, horizontal_counts) = build_segments(false);
+
+        // Build lookup tables
+        build_lookup(&mut vertical_segments, &horizontal_segments);
+        build_lookup(&mut horizontal_segments, &vertical_segments);
+
         Self {
-            vertical_segments: build_segments(true),
-            horizontal_segments: build_segments(false),
+            dim,
+            vertical_segments,
+            horizontal_segments,
+            vertical_counts,
+            horizontal_counts,
         }
     }
 
     fn slide_rounded_rocks(&mut self, vertical: bool, reverse: bool) {
-        let (segments, other_segments) = if vertical {
-            (&mut self.vertical_segments, &mut self.horizontal_segments)
+        let (segments, counts, other_counts) = if vertical {
+            (
+                &self.vertical_segments,
+                &mut self.vertical_counts,
+                &mut self.horizontal_counts,
+            )
         } else {
-            (&mut self.horizontal_segments, &mut self.vertical_segments)
+            (
+                &self.horizontal_segments,
+                &mut self.horizontal_counts,
+                &mut self.vertical_counts,
+            )
         };
 
-        for i in 0..segments.len() {
-            for segment in &mut segments[i] {
-                // Range of rounded rocks in this segment
-                let (start_j, end_j) = if reverse {
-                    (segment.end - segment.num_rounded_rocks, segment.end)
-                } else {
-                    (segment.start, segment.start + segment.num_rounded_rocks)
-                };
+        for (segment, count) in izip!(segments, counts) {
+            let (offset_start, offset_end) = if reverse {
+                ((segment.j_range.len() - *count), segment.j_range.len())
+            } else {
+                (0, *count)
+            };
 
-                // Transfer rounded rocks to intersecting segments
-                for j in start_j..end_j {
-                    // TODO: Binary search (but really, this could be a lookup table)
-                    for other_segment in &mut other_segments[j] {
-                        if other_segment.start <= i && i < other_segment.end {
-                            other_segment.num_rounded_rocks += 1;
-                        }
-                    }
-                }
-
-                segment.num_rounded_rocks = 0;
+            // Transfer rounded rocks to segments in the other direction
+            for other_segment_idx in segment.lookup[offset_start..offset_end].iter() {
+                other_counts[*other_segment_idx] += 1;
             }
+            *count = 0;
         }
     }
 
-    fn total_load(&self, vertical: bool) -> usize {
-        if vertical {
-            let dim = self.vertical_segments.len();
-            self.vertical_segments
-                .iter()
-                .map(|segments| {
-                    segments
-                        .iter()
-                        .map(|segment| {
-                            (segment.start..segment.end)
-                                .take(segment.num_rounded_rocks)
-                                .map(|y| dim - y)
-                                .sum::<usize>()
-                        })
-                        .sum::<usize>()
-                })
-                .sum()
-        } else {
-            let dim = self.horizontal_segments.len();
-            self.horizontal_segments
-                .iter()
-                .enumerate()
-                .map(|(y, segments)| {
-                    segments
-                        .iter()
-                        .map(|segment| segment.num_rounded_rocks * (dim - y))
-                        .sum::<usize>()
-                })
-                .sum()
-        }
-    }
+    /// Calculates the total load on the north support beams.
+    ///
+    /// Assumes the last slide direction was vertical, either north (`reverse = false`) or south (`reverse = true`).
+    fn total_load(&self, reverse: bool) -> usize {
+        let mut total_load = 0;
+        for (segment, count) in izip!(&self.vertical_segments, &self.vertical_counts) {
+            let (y_start, y_end) = if !reverse {
+                (segment.j_range.start, segment.j_range.start + *count)
+            } else {
+                (segment.j_range.end - *count, segment.j_range.end)
+            };
 
-    fn print(&self) {
-        let dim = self.vertical_segments.len();
-        for y in 0..dim {
-            for x in 0..dim {
-                if let Some(segment) = self.vertical_segments[x]
-                    .iter()
-                    .find(|segment| segment.start <= y && y < segment.end)
-                {
-                    if y < segment.start + segment.num_rounded_rocks {
-                        print!("O");
-                    } else {
-                        print!(".");
-                    }
-                } else {
-                    print!("#");
-                }
+            for y in y_start..y_end {
+                let load = self.dim - y;
+                total_load += load;
             }
-            println!();
         }
-        println!();
+        total_load
     }
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
     let field = Field::from_input(input);
-    Some(field.total_load(true))
+    Some(field.total_load(false))
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
     let mut field = Field::from_input(input);
 
     let mut cycles = 0;
-    let mut cache = HashMap::<Field, usize>::new();
+    let mut cache = HashMap::<Vec<usize>, usize>::new();
     let mut total_loads = vec![];
 
     // First cycle
@@ -184,12 +191,13 @@ pub fn part_two(input: &str) -> Option<usize> {
         field.slide_rounded_rocks(false, true);
         field.slide_rounded_rocks(true, false);
         field.slide_rounded_rocks(false, false);
+        // .total_load() assumes last slide direction was vertical, so we calculate it before sliding east
+        let total_load = field.total_load(true);
         field.slide_rounded_rocks(true, true);
 
-        let total_load = field.total_load(false);
         cycles += 1;
 
-        if let Some(prev_cycles) = cache.insert(field.clone(), cycles) {
+        if let Some(prev_cycles) = cache.insert(field.horizontal_counts.clone(), cycles) {
             let cycles_repeat = cycles - prev_cycles;
             let cycles_remaining = (1_000_000_000 - cycles) % cycles_repeat;
             return Some(total_loads[total_loads.len() - cycles_repeat + cycles_remaining]);
