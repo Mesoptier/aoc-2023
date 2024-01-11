@@ -8,22 +8,22 @@ advent_of_code::solution!(14);
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 struct Segment {
-    i: usize,
-    j_range: Range<usize>,
+    i: u32,
+    j_range: Range<u32>,
     // Index of the segment intersecting this one in the other direction for each j in j_range
-    lookup: Vec<usize>,
+    lookup: Vec<u32>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 struct Field {
-    dim: usize,
+    dim: u32,
 
     vertical_segments: Vec<Segment>,   // (i, j) = (x, y)
     horizontal_segments: Vec<Segment>, // (i, j) = (y, x)
 
     // Number of rounded rocks per vertical/horizontal segment
-    vertical_counts: Vec<usize>,
-    horizontal_counts: Vec<usize>,
+    vertical_counts: Vec<u32>,
+    horizontal_counts: Vec<u32>,
 }
 
 impl Field {
@@ -31,7 +31,7 @@ impl Field {
         let (lines, dim) = {
             let mut lines = input.lines().peekable();
             let dim = lines.peek().unwrap().len();
-            (lines, dim)
+            (lines, dim as u32)
         };
 
         let mut vertical_segments = vec![];
@@ -42,18 +42,18 @@ impl Field {
 
         #[derive(Clone)]
         struct Frontier {
-            j_start: usize, // y for vertical frontiers, x for horizontal frontiers
-            segment_idx: usize,
-            count: usize,
-            lookup: Vec<usize>,
+            j_start: u32, // y for vertical frontiers, x for horizontal frontiers
+            segment_idx: u32,
+            count: u32,
+            lookup: Vec<u32>,
         }
 
         fn close_frontier(
             frontier: &mut Option<Frontier>,
-            i: usize,
-            j_end: usize,
+            i: u32,
+            j_end: u32,
             segments: &mut Vec<Segment>,
-            counts: &mut Vec<usize>,
+            counts: &mut Vec<u32>,
         ) {
             if let Some(frontier) = frontier.take() {
                 let segment = Segment {
@@ -63,32 +63,35 @@ impl Field {
                 };
 
                 // Resize segments and counts to fit the new segment
-                if segments.len() <= frontier.segment_idx {
+                if segments.len() as u32 <= frontier.segment_idx {
+                    let new_len = (frontier.segment_idx + 1) as usize;
                     segments.resize(
-                        frontier.segment_idx + 1,
+                        new_len,
                         Segment {
                             i: 0,
                             j_range: 0..0,
                             lookup: vec![],
                         },
                     );
-                    counts.resize(frontier.segment_idx + 1, 0);
+                    counts.resize(new_len, 0);
                 }
 
-                segments[frontier.segment_idx] = segment;
-                counts[frontier.segment_idx] = frontier.count;
+                segments[frontier.segment_idx as usize] = segment;
+                counts[frontier.segment_idx as usize] = frontier.count;
             }
         }
 
-        let mut vertical_frontiers: Vec<Option<Frontier>> = vec![None; dim];
+        let mut vertical_frontiers: Vec<Option<Frontier>> = vec![None; dim as usize];
         let mut next_vertical_segment_idx = 0;
         let mut next_horizontal_segment_idx = 0;
 
         for (y, line) in lines.enumerate() {
+            let y = y as u32;
             let mut horizontal_frontier: Option<Frontier> = None;
 
             for (x, c) in line.chars().enumerate() {
                 let vertical_frontier = &mut vertical_frontiers[x];
+                let x = x as u32;
 
                 if c == '#' {
                     // Close current horizontal/vertical frontier
@@ -156,6 +159,7 @@ impl Field {
 
         // Close current vertical frontiers
         for (x, frontier) in vertical_frontiers.iter_mut().enumerate() {
+            let x = x as u32;
             close_frontier(
                 frontier,
                 x,
@@ -196,14 +200,17 @@ impl Field {
 
         for (segment, count) in izip!(segments, counts) {
             let (offset_start, offset_end) = if from_reverse {
-                (segment.j_range.len() - *count, segment.j_range.len())
+                (
+                    segment.j_range.len() - *count as usize,
+                    segment.j_range.len(),
+                )
             } else {
-                (0, *count)
+                (0, *count as usize)
             };
 
             // Transfer rounded rocks to segments in the other direction
             for other_segment_idx in segment.lookup[offset_start..offset_end].iter() {
-                other_counts[*other_segment_idx] += 1;
+                other_counts[*other_segment_idx as usize] += 1;
             }
             *count = 0;
         }
@@ -212,7 +219,7 @@ impl Field {
     /// Calculates the total load on the north support beams.
     ///
     /// Assumes the last slide direction was vertical, either north (`reverse = false`) or south (`reverse = true`).
-    fn total_load(&self, reverse: bool) -> usize {
+    fn total_load(&self, reverse: bool) -> u32 {
         let mut total_load = 0;
         for (segment, count) in izip!(&self.vertical_segments, &self.vertical_counts) {
             let y_start = if !reverse {
@@ -228,17 +235,17 @@ impl Field {
     }
 }
 
-pub fn part_one(input: &str) -> Option<usize> {
+pub fn part_one(input: &str) -> Option<u32> {
     let field = Field::from_input(input);
     // Sliding north is implicit in loading the field
     Some(field.total_load(false))
 }
 
-pub fn part_two(input: &str) -> Option<usize> {
+pub fn part_two(input: &str) -> Option<u32> {
     let mut field = Field::from_input(input);
 
     let mut cycles = 0;
-    let mut cache = HashMap::<Vec<usize>, usize>::new();
+    let mut cache = HashMap::<Vec<u32>, usize>::new();
     let mut total_loads = vec![];
 
     // First cycle
