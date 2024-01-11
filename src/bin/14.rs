@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::ops::Range;
 
-use itertools::{izip, Itertools};
+use itertools::izip;
 
 advent_of_code::solution!(14);
 
@@ -28,85 +28,142 @@ struct Field {
 
 impl Field {
     fn from_input(input: &str) -> Self {
-        let grid = input
-            .lines()
-            .map(|line| line.chars().collect_vec())
-            .collect_vec();
+        let (lines, dim) = {
+            let mut lines = input.lines().peekable();
+            let dim = lines.peek().unwrap().len();
+            (lines, dim)
+        };
 
-        let dim = grid.len();
-        assert_eq!(grid[0].len(), grid.len());
+        let mut vertical_segments = vec![];
+        let mut horizontal_segments = vec![];
 
-        let build_segments = |vertical: bool| -> (Vec<Segment>, Vec<usize>) {
-            let mut segments = vec![];
-            let mut counts = vec![];
+        let mut vertical_counts = vec![];
+        let mut horizontal_counts = vec![];
 
-            for i in 0..dim {
-                let mut j_range_start = None;
-                let mut count = 0;
+        #[derive(Clone)]
+        struct Frontier {
+            j_start: usize, // y for vertical frontiers, x for horizontal frontiers
+            segment_idx: usize,
+            count: usize,
+            lookup: Vec<usize>,
+        }
 
-                for j in 0..dim {
-                    let (x, y) = if vertical { (i, j) } else { (j, i) };
-                    let c = grid[y][x];
+        fn close_frontier(
+            frontier: &mut Option<Frontier>,
+            i: usize,
+            j_end: usize,
+            segments: &mut Vec<Segment>,
+            counts: &mut Vec<usize>,
+        ) {
+            if let Some(frontier) = frontier.take() {
+                let segment = Segment {
+                    i,
+                    j_range: frontier.j_start..j_end,
+                    lookup: frontier.lookup,
+                };
 
-                    if c != '#' && j_range_start.is_none() {
-                        j_range_start = Some(j);
-                    }
-                    if c == 'O' && vertical {
-                        // Rounded rocks are only added for vertical segments,
-                        // since the first slide direction is always up
-                        count += 1;
-                    }
-                    if c == '#' && j_range_start.is_some() {
-                        segments.push(Segment {
-                            i,
-                            j_range: j_range_start.unwrap()..j,
+                // Resize segments and counts to fit the new segment
+                if segments.len() <= frontier.segment_idx {
+                    segments.resize(
+                        frontier.segment_idx + 1,
+                        Segment {
+                            i: 0,
+                            j_range: 0..0,
                             lookup: vec![],
-                        });
-                        counts.push(count);
+                        },
+                    );
+                    counts.resize(frontier.segment_idx + 1, 0);
+                }
 
-                        j_range_start = None;
-                        count = 0;
+                segments[frontier.segment_idx] = segment;
+                counts[frontier.segment_idx] = frontier.count;
+            }
+        }
+
+        let mut vertical_frontiers: Vec<Option<Frontier>> = vec![None; dim];
+        let mut next_vertical_segment_idx = 0;
+        let mut next_horizontal_segment_idx = 0;
+
+        for (y, line) in lines.enumerate() {
+            let mut horizontal_frontier: Option<Frontier> = None;
+
+            for (x, c) in line.chars().enumerate() {
+                let vertical_frontier = &mut vertical_frontiers[x];
+
+                if c == '#' {
+                    // Close current horizontal/vertical frontier
+                    close_frontier(
+                        &mut horizontal_frontier,
+                        y,
+                        x,
+                        &mut horizontal_segments,
+                        &mut horizontal_counts,
+                    );
+                    close_frontier(
+                        vertical_frontier,
+                        x,
+                        y,
+                        &mut vertical_segments,
+                        &mut vertical_counts,
+                    );
+                } else {
+                    // Open new horizontal/vertical frontier
+                    let horizontal_frontier = horizontal_frontier.get_or_insert_with(|| {
+                        let frontier = Frontier {
+                            j_start: x,
+                            segment_idx: next_horizontal_segment_idx,
+                            count: 0,
+                            lookup: vec![],
+                        };
+                        next_horizontal_segment_idx += 1;
+                        frontier
+                    });
+                    let vertical_frontier = vertical_frontier.get_or_insert_with(|| {
+                        let frontier = Frontier {
+                            j_start: y,
+                            segment_idx: next_vertical_segment_idx,
+                            count: 0,
+                            lookup: vec![],
+                        };
+                        next_vertical_segment_idx += 1;
+                        frontier
+                    });
+
+                    // Add horizontal/vertical frontier to each other's lookup
+                    horizontal_frontier
+                        .lookup
+                        .push(vertical_frontier.segment_idx);
+                    vertical_frontier
+                        .lookup
+                        .push(horizontal_frontier.segment_idx);
+
+                    if c == 'O' {
+                        // Rounded rocks are only added for vertical segments
+                        vertical_frontier.count += 1;
                     }
                 }
-
-                if let Some(segment_start) = j_range_start {
-                    segments.push(Segment {
-                        i,
-                        j_range: segment_start..dim,
-                        lookup: vec![],
-                    });
-                    counts.push(count);
-                }
             }
 
-            (segments, counts)
-        };
+            // Close current horizontal frontier
+            close_frontier(
+                &mut horizontal_frontier,
+                y,
+                dim,
+                &mut horizontal_segments,
+                &mut horizontal_counts,
+            );
+        }
 
-        let build_lookup = |segments: &mut Vec<Segment>, other_segments: &Vec<Segment>| {
-            for segment in segments {
-                segment.lookup = vec![usize::MAX; segment.j_range.len()];
-
-                other_segments
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, other_segment)| {
-                        segment.j_range.contains(&other_segment.i)
-                            && other_segment.j_range.contains(&segment.i)
-                    })
-                    .for_each(|(idx, other_segment)| {
-                        let offset = other_segment.i - segment.j_range.start;
-                        segment.lookup[offset] = idx;
-                    });
-            }
-        };
-
-        // Build segments
-        let (mut vertical_segments, vertical_counts) = build_segments(true);
-        let (mut horizontal_segments, horizontal_counts) = build_segments(false);
-
-        // Build lookup tables
-        build_lookup(&mut vertical_segments, &horizontal_segments);
-        build_lookup(&mut horizontal_segments, &vertical_segments);
+        // Close current vertical frontiers
+        for (x, frontier) in vertical_frontiers.iter_mut().enumerate() {
+            close_frontier(
+                frontier,
+                x,
+                dim,
+                &mut vertical_segments,
+                &mut vertical_counts,
+            );
+        }
 
         Self {
             dim,
@@ -134,7 +191,7 @@ impl Field {
 
         for (segment, count) in izip!(segments, counts) {
             let (offset_start, offset_end) = if reverse {
-                ((segment.j_range.len() - *count), segment.j_range.len())
+                (segment.j_range.len() - *count, segment.j_range.len())
             } else {
                 (0, *count)
             };
