@@ -215,16 +215,14 @@ impl Field {
     fn total_load(&self, reverse: bool) -> usize {
         let mut total_load = 0;
         for (segment, count) in izip!(&self.vertical_segments, &self.vertical_counts) {
-            let (y_start, y_end) = if !reverse {
-                (segment.j_range.start, segment.j_range.start + *count)
+            let y_start = if !reverse {
+                segment.j_range.start
             } else {
-                (segment.j_range.end - *count, segment.j_range.end)
+                segment.j_range.end - *count
             };
 
-            for y in y_start..y_end {
-                let load = self.dim - y;
-                total_load += load;
-            }
+            let load = count * (self.dim - y_start) - (count * (count - 1)) / 2;
+            total_load += load;
         }
         total_load
     }
