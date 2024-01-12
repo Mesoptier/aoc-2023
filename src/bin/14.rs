@@ -228,7 +228,7 @@ impl Field {
                 segment.j_range.end - *count
             };
 
-            let load = count * (self.dim - y_start) - (count * (count - 1)) / 2;
+            let load = count * (self.dim - y_start) - (count * count.wrapping_sub(1)) / 2;
             total_load += load;
         }
         total_load
