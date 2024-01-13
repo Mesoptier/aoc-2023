@@ -327,7 +327,7 @@ fn compute_energized_tiles(
     nodes: &[Node],
     node_index: NodeIndex,
     indexer: CoordIndexer,
-    length_remaining: &VecMap<NodeIndex, u32, LinearIndexer<NodeIndex>>,
+    length_remaining_map: &VecMap<NodeIndex, u32, LinearIndexer<NodeIndex>>,
     current_max_energized_tiles: u32,
 ) -> u32 {
     let mut queue = VecDeque::<NodeIndex>::new();
@@ -340,13 +340,15 @@ fn compute_energized_tiles(
     energized.insert(nodes[node_index as usize].coord);
     energized_count += 1;
 
+    // Upper bound on the number of distinct tiles that will be traveled through from the nodes in the queue.
+    let mut length_remaining = *length_remaining_map.get(&node_index).unwrap();
+
     while let Some(node_index) = queue.pop_front() {
-        if queue.is_empty()
-            && energized_count + length_remaining.get(&node_index).unwrap()
-                <= current_max_energized_tiles
-        {
+        if energized_count + length_remaining <= current_max_energized_tiles {
             return energized_count;
         }
+
+        length_remaining -= length_remaining_map.get(&node_index).unwrap();
 
         let node = &nodes[node_index as usize];
 
@@ -371,6 +373,7 @@ fn compute_energized_tiles(
 
             if visited.insert(*next_node_index) {
                 queue.push_back(*next_node_index);
+                length_remaining += length_remaining_map.get(next_node_index).unwrap();
             }
         }
     }
