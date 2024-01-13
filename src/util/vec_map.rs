@@ -1,6 +1,7 @@
 use crate::util::indexer::Indexer;
 use crate::util::vec_table::VecTable;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VecMap<K, V, I> {
     table: VecTable<K, Option<V>, I>,
 }
@@ -47,5 +48,9 @@ where
     /// Returns `true` if the map contains no elements.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn contains_key(&self, key: &K) -> bool {
+        self.table.get(key).is_some()
     }
 }

@@ -271,7 +271,65 @@ fn build_nodes(
     (nodes, starting_nodes)
 }
 
-fn compute_energized_tiles(nodes: &[Node], node_index: NodeIndex, indexer: CoordIndexer) -> u32 {
+/// Computes the number of tiles beams will travel through if they start at the given node, excluding loops.
+/// This functions as an upper bound on the number of energized tiles.
+fn build_length_remaining(nodes: &[Node]) -> VecMap<NodeIndex, u32, LinearIndexer<NodeIndex>> {
+    let mut length_remaining = VecMap::new(LinearIndexer::new(nodes.len() as NodeIndex));
+
+    for node_index in 0..(nodes.len() as NodeIndex) {
+        if length_remaining.contains_key(&node_index) {
+            continue;
+        }
+
+        build_length_remaining_inner(
+            nodes,
+            node_index,
+            &mut length_remaining,
+            &mut VecSet::new(LinearIndexer::new(nodes.len() as NodeIndex)),
+        );
+    }
+
+    length_remaining
+}
+
+fn build_length_remaining_inner(
+    nodes: &[Node],
+    node_index: NodeIndex,
+    length_remaining: &mut VecMap<NodeIndex, u32, LinearIndexer<NodeIndex>>,
+    visited: &mut VecSet<NodeIndex, LinearIndexer<NodeIndex>>,
+) -> u32 {
+    if !visited.insert(node_index) {
+        return 0;
+    }
+
+    if let Some(length) = length_remaining.get(&node_index) {
+        return *length;
+    }
+
+    let node = &nodes[node_index as usize];
+    let length = node
+        .next
+        .iter()
+        .flatten()
+        .map(|next_node_index| {
+            let next_node = &nodes[*next_node_index as usize];
+            let dist =
+                node.coord.x.abs_diff(next_node.coord.x) + node.coord.y.abs_diff(next_node.coord.y);
+
+            build_length_remaining_inner(nodes, *next_node_index, length_remaining, visited) + dist
+        })
+        .sum::<u32>();
+    length_remaining.insert(&node_index, length);
+    length
+}
+
+fn compute_energized_tiles(
+    nodes: &[Node],
+    node_index: NodeIndex,
+    indexer: CoordIndexer,
+    length_remaining: &VecMap<NodeIndex, u32, LinearIndexer<NodeIndex>>,
+    current_max_energized_tiles: u32,
+) -> u32 {
     let mut queue = VecDeque::<NodeIndex>::new();
     let mut visited = VecSet::new(LinearIndexer::new(nodes.len() as NodeIndex));
     queue.push_front(node_index);
@@ -283,6 +341,13 @@ fn compute_energized_tiles(nodes: &[Node], node_index: NodeIndex, indexer: Coord
     energized_count += 1;
 
     while let Some(node_index) = queue.pop_front() {
+        if queue.is_empty()
+            && energized_count + length_remaining.get(&node_index).unwrap()
+                <= current_max_energized_tiles
+        {
+            return energized_count;
+        }
+
         let node = &nodes[node_index as usize];
 
         for next_node_index in node.next.iter().flatten() {
@@ -317,6 +382,8 @@ pub fn part_one(input: &str) -> Option<u32> {
     let map = parse_input(input);
     let (nodes, starting_nodes) = build_nodes(&map);
 
+    let length_remaining_map = build_length_remaining(&nodes);
+
     compute_energized_tiles(
         &nodes,
         *starting_nodes
@@ -326,6 +393,8 @@ pub fn part_one(input: &str) -> Option<u32> {
             })
             .unwrap(),
         *map.indexer(),
+        &length_remaining_map,
+        0,
     )
     .into()
 }
@@ -333,6 +402,8 @@ pub fn part_one(input: &str) -> Option<u32> {
 pub fn part_two(input: &str) -> Option<u32> {
     let map = parse_input(input);
     let (nodes, starting_nodes) = build_nodes(&map);
+
+    let length_remaining_map = build_length_remaining(&nodes);
 
     let width = map.indexer().width;
     let height = map.indexer().height;
@@ -355,14 +426,17 @@ pub fn part_two(input: &str) -> Option<u32> {
             direction: Direction::Left,
         }),
     ]
-    .map(|beam_front| {
+    .fold(0, |current_max_energized_count, beam_front| {
         compute_energized_tiles(
             &nodes,
             *starting_nodes.get(&beam_front).unwrap(),
             *map.indexer(),
+            &length_remaining_map,
+            current_max_energized_count,
         )
+        .max(current_max_energized_count)
     })
-    .max()
+    .into()
 }
 
 #[cfg(test)]

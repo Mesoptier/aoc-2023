@@ -24,7 +24,7 @@ where
 
     /// Returns `true` if the set contains a value.
     pub fn contains(&self, value: &V) -> bool {
-        self.map.get(value).is_some()
+        self.map.contains_key(value)
     }
 
     /// Returns the number of values in the set.
