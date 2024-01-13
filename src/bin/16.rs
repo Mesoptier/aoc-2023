@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use itertools::chain;
 
 use advent_of_code::util::coord::Direction;
@@ -330,9 +328,9 @@ fn compute_energized_tiles(
     length_remaining_map: &VecMap<NodeIndex, u32, LinearIndexer<NodeIndex>>,
     current_max_energized_tiles: u32,
 ) -> u32 {
-    let mut queue = VecDeque::<NodeIndex>::new();
+    let mut stack = Vec::<NodeIndex>::new();
     let mut visited = VecSet::new(LinearIndexer::new(nodes.len() as NodeIndex));
-    queue.push_front(node_index);
+    stack.push(node_index);
     visited.insert(node_index);
 
     let mut energized_count = 0;
@@ -340,15 +338,15 @@ fn compute_energized_tiles(
     energized.insert(nodes[node_index as usize].coord);
     energized_count += 1;
 
-    // Upper bound on the number of distinct tiles that will be traveled through from the nodes in the queue.
-    let mut length_remaining = *length_remaining_map.get(&node_index).unwrap();
+    // Upper bound on the number of distinct tiles that will be traveled through from the nodes in the stack.
+    let mut length_remaining_in_stack = *length_remaining_map.get(&node_index).unwrap();
 
-    while let Some(node_index) = queue.pop_front() {
-        if energized_count + length_remaining <= current_max_energized_tiles {
+    while let Some(node_index) = stack.pop() {
+        if energized_count + length_remaining_in_stack <= current_max_energized_tiles {
             return energized_count;
         }
 
-        length_remaining -= length_remaining_map.get(&node_index).unwrap();
+        length_remaining_in_stack -= length_remaining_map.get(&node_index).unwrap();
 
         let node = &nodes[node_index as usize];
 
@@ -372,8 +370,8 @@ fn compute_energized_tiles(
             }
 
             if visited.insert(*next_node_index) {
-                queue.push_back(*next_node_index);
-                length_remaining += length_remaining_map.get(next_node_index).unwrap();
+                stack.push(*next_node_index);
+                length_remaining_in_stack += length_remaining_map.get(next_node_index).unwrap();
             }
         }
     }
