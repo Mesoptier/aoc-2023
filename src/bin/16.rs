@@ -36,19 +36,19 @@ impl Indexer<DirectedCoord> for StartingCoordIndexer {
     fn index_for(&self, key: &DirectedCoord) -> usize {
         match key.direction {
             Direction::Down => {
-                assert_eq!(key.coord.y, 0);
+                debug_assert_eq!(key.coord.y, 0);
                 key.coord.x
             }
             Direction::Up => {
-                assert_eq!(key.coord.y, self.height - 1);
+                debug_assert_eq!(key.coord.y, self.height - 1);
                 self.width + key.coord.x
             }
             Direction::Right => {
-                assert_eq!(key.coord.x, 0);
+                debug_assert_eq!(key.coord.x, 0);
                 self.width * 2 + key.coord.y
             }
             Direction::Left => {
-                assert_eq!(key.coord.x, self.width - 1);
+                debug_assert_eq!(key.coord.x, self.width - 1);
                 self.width * 2 + self.height + key.coord.y
             }
         }
@@ -289,7 +289,7 @@ fn compute_energized_tiles(nodes: &[Node], node_index: NodeIndex, indexer: Coord
             let min_y = next_node.coord.y.min(node.coord.y);
             let max_y = next_node.coord.y.max(node.coord.y);
 
-            assert!(min_x == max_x || min_y == max_y);
+            debug_assert!(min_x == max_x || min_y == max_y);
 
             for x in min_x..=max_x {
                 for y in min_y..=max_y {
