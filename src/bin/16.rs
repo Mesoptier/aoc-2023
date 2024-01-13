@@ -351,6 +351,10 @@ fn compute_energized_tiles(
         let node = &nodes[node_index as usize];
 
         for next_node_index in node.next.iter().flatten() {
+            if !(visited.insert(*next_node_index)) {
+                continue;
+            }
+
             let next_node = &nodes[*next_node_index as usize];
 
             let min_x = next_node.coord.x.min(node.coord.x);
@@ -369,10 +373,8 @@ fn compute_energized_tiles(
                 }
             }
 
-            if visited.insert(*next_node_index) {
-                stack.push(*next_node_index);
-                length_remaining_in_stack += length_remaining_map.get(next_node_index).unwrap();
-            }
+            stack.push(*next_node_index);
+            length_remaining_in_stack += length_remaining_map.get(next_node_index).unwrap();
         }
     }
 
