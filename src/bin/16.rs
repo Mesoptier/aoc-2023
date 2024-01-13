@@ -65,67 +65,93 @@ fn build_nodes(
     let width = map.indexer().width;
     let height = map.indexer().height;
 
+    // Each special character (|, -, \, /) is represented by four nodes, one for each incoming direction.
+    // Each node has one or two outgoing directions, the nodes for which are stored in the `next` array.
     let mut nodes = vec![];
+    // Map from directed coordinates along the edge of the map to the index of the node that represents them.
     let mut starting_nodes = VecMap::new(StartingCoordIndexer { width, height });
 
+    // A frontier represents a segment of empty space south/east of a special character (or the edge of the map).
     struct Frontier {
+        // A beam traveling the segment in the reverse direction (north/west) goes to the node `in_index`.
         in_index: NodeIndex,
+        // A beam traveling the segment in the forward direction (south/east) goes to the node `out_index`.
+        // The actual node is only created when the frontier is closed.
         out_index: NodeIndex,
     }
 
-    impl Frontier {
-        fn next(nodes: &mut Vec<Node>, coord: Coord) -> Frontier {
-            let in_index = nodes.len();
-            let in_node = Node {
-                coord,
-                next: [None; 2],
-            };
-            nodes.push(in_node);
+    fn open_frontier(nodes: &mut Vec<Node>, coord: Coord) -> Frontier {
+        let in_index = nodes.len();
+        let in_node = Node {
+            coord,
+            next: [None; 2],
+        };
+        nodes.push(in_node);
 
-            let out_index = nodes.len();
-            let out_node = Node::empty(); // will be filled when frontier is closed
-            nodes.push(out_node);
+        let out_index = nodes.len();
+        let out_node = Node::empty(); // will be filled when frontier is closed
+        nodes.push(out_node);
 
-            Frontier {
-                in_index,
-                out_index,
-            }
+        Frontier {
+            in_index,
+            out_index,
         }
+    }
+
+    /// Opens a frontier starting at the edge of the map.
+    fn open_first_frontier(
+        coord: Coord,
+        direction: Direction,
+        nodes: &mut Vec<Node>,
+        starting_nodes: &mut VecMap<DirectedCoord, NodeIndex, StartingCoordIndexer>,
+    ) -> Frontier {
+        let frontier = open_frontier(nodes, coord);
+
+        // Add starting node from edge
+        let node_index = nodes.len();
+        nodes.push(Node {
+            coord,
+            next: [Some(frontier.out_index), None],
+        });
+        starting_nodes.insert(&DirectedCoord { coord, direction }, node_index);
+        frontier
+    }
+
+    /// Closes a frontier at the edge of the map.
+    fn close_last_frontier(
+        frontier: Frontier,
+        coord: Coord,
+        direction: Direction,
+        nodes: &mut Vec<Node>,
+        starting_nodes: &mut VecMap<DirectedCoord, NodeIndex, StartingCoordIndexer>,
+    ) {
+        nodes[frontier.out_index].coord = coord;
+
+        // Add starting node from edge
+        let node_index = nodes.len();
+        nodes.push(Node {
+            coord,
+            next: [Some(frontier.in_index), None],
+        });
+        starting_nodes.insert(&DirectedCoord { coord, direction }, node_index);
     }
 
     let mut vertical_frontiers = Vec::with_capacity(width);
     for x in 0..width {
-        let coord = Coord::new(x, 0);
-        let vertical_frontier = Frontier::next(&mut nodes, coord);
-        let starting_node_index = nodes.len();
-        nodes.push(Node {
-            coord,
-            next: [Some(vertical_frontier.out_index), None],
-        });
-        starting_nodes.insert(
-            &DirectedCoord {
-                coord,
-                direction: Direction::Down,
-            },
-            starting_node_index,
-        );
-        vertical_frontiers.push(vertical_frontier);
+        vertical_frontiers.push(open_first_frontier(
+            Coord::new(x, 0),
+            Direction::Down,
+            &mut nodes,
+            &mut starting_nodes,
+        ));
     }
 
     for y in 0..height {
-        let coord = Coord::new(0, y);
-        let mut horizontal_frontier = Frontier::next(&mut nodes, coord);
-        let starting_node_index = nodes.len();
-        nodes.push(Node {
-            coord,
-            next: [Some(horizontal_frontier.out_index), None],
-        });
-        starting_nodes.insert(
-            &DirectedCoord {
-                coord,
-                direction: Direction::Right,
-            },
-            starting_node_index,
+        let mut horizontal_frontier = open_first_frontier(
+            Coord::new(0, y),
+            Direction::Right,
+            &mut nodes,
+            &mut starting_nodes,
         );
 
         for x in 0..width {
@@ -137,8 +163,8 @@ fn build_nodes(
 
             let vertical_frontier = &mut vertical_frontiers[x];
 
-            let next_horizontal_frontier = Frontier::next(&mut nodes, coord);
-            let next_vertical_frontier = Frontier::next(&mut nodes, coord);
+            let next_horizontal_frontier = open_frontier(&mut nodes, coord);
+            let next_vertical_frontier = open_frontier(&mut nodes, coord);
 
             nodes[horizontal_frontier.out_index].coord = coord;
             nodes[vertical_frontier.out_index].coord = coord;
@@ -200,31 +226,23 @@ fn build_nodes(
         }
 
         // Close the last horizontal frontier.
-        nodes[horizontal_frontier.out_index].coord = Coord::new(width - 1, y);
-
-        let node_index = nodes.len();
-        nodes.push(Node {
-            coord: Coord::new(width - 1, y),
-            next: [Some(horizontal_frontier.in_index); 2],
-        });
-        starting_nodes.insert(
-            &DirectedCoord::new(width - 1, y, Direction::Left),
-            node_index,
+        close_last_frontier(
+            horizontal_frontier,
+            Coord::new(width - 1, y),
+            Direction::Left,
+            &mut nodes,
+            &mut starting_nodes,
         );
     }
 
     // Close the last vertical frontiers.
     for (x, vertical_frontier) in vertical_frontiers.into_iter().enumerate() {
-        nodes[vertical_frontier.out_index].coord = Coord::new(x, height - 1);
-
-        let node_index = nodes.len();
-        nodes.push(Node {
-            coord: Coord::new(x, height - 1),
-            next: [Some(vertical_frontier.in_index); 2],
-        });
-        starting_nodes.insert(
-            &DirectedCoord::new(x, height - 1, Direction::Up),
-            node_index,
+        close_last_frontier(
+            vertical_frontier,
+            Coord::new(x, height - 1),
+            Direction::Up,
+            &mut nodes,
+            &mut starting_nodes,
         );
     }
 
