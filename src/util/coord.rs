@@ -27,36 +27,46 @@ impl Direction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Coord {
-    pub x: usize,
-    pub y: usize,
+pub struct Coord<T = usize> {
+    pub x: T,
+    pub y: T,
 }
 
-impl Coord {
-    pub fn new(x: usize, y: usize) -> Self {
+impl<T> Coord<T> {
+    pub fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
-pub struct CoordIndexer {
-    pub width: usize,
-    pub height: usize,
+pub struct CoordIndexer<T = usize> {
+    pub width: T,
+    pub height: T,
 }
 
-impl CoordIndexer {
-    pub fn new(width: usize, height: usize) -> Self {
+impl<T> CoordIndexer<T> {
+    pub fn new(width: T, height: T) -> Self {
         Self { width, height }
     }
 }
 
-impl Indexer<Coord> for CoordIndexer {
+impl Indexer<Coord<usize>> for CoordIndexer<usize> {
     fn len(&self) -> usize {
         self.width * self.height
     }
 
     fn index_for(&self, coord: &Coord) -> usize {
         coord.y * self.width + coord.x
+    }
+}
+
+impl Indexer<Coord<u32>> for CoordIndexer<u32> {
+    fn len(&self) -> usize {
+        (self.width * self.height) as usize
+    }
+
+    fn index_for(&self, coord: &Coord<u32>) -> usize {
+        (coord.y * self.width + coord.x) as usize
     }
 }
 
@@ -147,13 +157,13 @@ impl Indexer<Coord> for FlippedCoordIndexer<Left> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DirectedCoord {
-    pub coord: Coord,
+pub struct DirectedCoord<T = usize> {
+    pub coord: Coord<T>,
     pub direction: Direction,
 }
 
-impl DirectedCoord {
-    pub fn new(x: usize, y: usize, direction: Direction) -> Self {
+impl<T> DirectedCoord<T> {
+    pub fn new(x: T, y: T, direction: Direction) -> Self {
         Self {
             coord: Coord::new(x, y),
             direction,
@@ -162,19 +172,19 @@ impl DirectedCoord {
 }
 
 #[derive(Copy, Clone)]
-pub struct DirectedCoordIndexer {
-    pub width: usize,
-    pub height: usize,
+pub struct DirectedCoordIndexer<T = usize> {
+    pub width: T,
+    pub height: T,
 }
 
-impl DirectedCoordIndexer {
-    pub fn new(width: usize, height: usize) -> Self {
+impl<T> DirectedCoordIndexer<T> {
+    pub fn new(width: T, height: T) -> Self {
         Self { width, height }
     }
 }
 
-impl From<CoordIndexer> for DirectedCoordIndexer {
-    fn from(coord_indexer: CoordIndexer) -> Self {
+impl<T> From<CoordIndexer<T>> for DirectedCoordIndexer<T> {
+    fn from(coord_indexer: CoordIndexer<T>) -> Self {
         Self {
             width: coord_indexer.width,
             height: coord_indexer.height,
@@ -182,7 +192,7 @@ impl From<CoordIndexer> for DirectedCoordIndexer {
     }
 }
 
-impl Indexer<DirectedCoord> for DirectedCoordIndexer {
+impl Indexer<DirectedCoord<usize>> for DirectedCoordIndexer<usize> {
     fn len(&self) -> usize {
         self.width * self.height * 4
     }
@@ -199,5 +209,25 @@ impl Indexer<DirectedCoord> for DirectedCoordIndexer {
             Direction::Left => 3,
         };
         (y * self.width + x) * 4 + direction_index
+    }
+}
+
+impl Indexer<DirectedCoord<u32>> for DirectedCoordIndexer<u32> {
+    fn len(&self) -> usize {
+        (self.width * self.height * 4) as usize
+    }
+
+    fn index_for(&self, directed_coord: &DirectedCoord<u32>) -> usize {
+        let DirectedCoord {
+            coord: Coord { x, y },
+            direction,
+        } = *directed_coord;
+        let direction_index = match direction {
+            Direction::Up => 0,
+            Direction::Right => 1,
+            Direction::Down => 2,
+            Direction::Left => 3,
+        };
+        ((y * self.width + x) * 4 + direction_index) as usize
     }
 }

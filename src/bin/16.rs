@@ -2,12 +2,16 @@ use std::collections::VecDeque;
 
 use itertools::chain;
 
-use advent_of_code::util::coord::{Coord, CoordIndexer, DirectedCoord, Direction};
+use advent_of_code::util::coord::Direction;
 use advent_of_code::util::{Indexer, LinearIndexer, VecMap, VecSet, VecTable};
 
 advent_of_code::solution!(16);
 
-type NodeIndex = usize;
+type NodeIndex = u32;
+type CoordT = u32;
+type Coord = advent_of_code::util::coord::Coord<CoordT>;
+type DirectedCoord = advent_of_code::util::coord::DirectedCoord<CoordT>;
+type CoordIndexer = advent_of_code::util::coord::CoordIndexer<CoordT>;
 
 struct Node {
     coord: Coord,
@@ -17,24 +21,24 @@ struct Node {
 impl Node {
     fn empty() -> Self {
         Self {
-            coord: Coord::new(usize::MAX, usize::MAX),
+            coord: Coord::new(CoordT::MAX, CoordT::MAX),
             next: [None; 2],
         }
     }
 }
 
 struct StartingCoordIndexer {
-    width: usize,
-    height: usize,
+    width: CoordT,
+    height: CoordT,
 }
 
 impl Indexer<DirectedCoord> for StartingCoordIndexer {
     fn len(&self) -> usize {
-        self.width * 2 + self.height * 2
+        (self.width * 2 + self.height * 2) as usize
     }
 
     fn index_for(&self, key: &DirectedCoord) -> usize {
-        match key.direction {
+        (match key.direction {
             Direction::Down => {
                 debug_assert_eq!(key.coord.y, 0);
                 key.coord.x
@@ -51,7 +55,7 @@ impl Indexer<DirectedCoord> for StartingCoordIndexer {
                 debug_assert_eq!(key.coord.x, self.width - 1);
                 self.width * 2 + self.height + key.coord.y
             }
-        }
+        }) as usize
     }
 }
 
@@ -68,8 +72,8 @@ fn parse_input(input: &str) -> VecTable<Coord, char, CoordIndexer> {
             line.chars()
         })
         .collect::<Vec<char>>();
-    let width = width.unwrap();
-    let height = data.len() / width;
+    let width = width.unwrap() as CoordT;
+    let height = (data.len() as CoordT) / width;
     let indexer = CoordIndexer::new(width, height);
     VecTable::from_vec(data, indexer)
 }
@@ -80,8 +84,8 @@ fn build_nodes(
     Vec<Node>,
     VecMap<DirectedCoord, NodeIndex, StartingCoordIndexer>,
 ) {
-    let width = map.indexer().width;
-    let height = map.indexer().height;
+    let width = map.indexer().width as CoordT;
+    let height = map.indexer().height as CoordT;
 
     // Each special character (|, -, \, /) is represented by four nodes, one for each incoming direction.
     // Each node has one or two outgoing directions, the nodes for which are stored in the `next` array.
@@ -99,14 +103,14 @@ fn build_nodes(
     }
 
     fn open_frontier(nodes: &mut Vec<Node>, coord: Coord) -> Frontier {
-        let in_index = nodes.len();
+        let in_index = nodes.len() as NodeIndex;
         let in_node = Node {
             coord,
             next: [None; 2],
         };
         nodes.push(in_node);
 
-        let out_index = nodes.len();
+        let out_index = nodes.len() as NodeIndex;
         let out_node = Node::empty(); // will be filled when frontier is closed
         nodes.push(out_node);
 
@@ -126,7 +130,7 @@ fn build_nodes(
         let frontier = open_frontier(nodes, coord);
 
         // Add starting node from edge
-        let node_index = nodes.len();
+        let node_index = nodes.len() as NodeIndex;
         nodes.push(Node {
             coord,
             next: [Some(frontier.out_index), None],
@@ -143,10 +147,10 @@ fn build_nodes(
         nodes: &mut Vec<Node>,
         starting_nodes: &mut VecMap<DirectedCoord, NodeIndex, StartingCoordIndexer>,
     ) {
-        nodes[frontier.out_index].coord = coord;
+        nodes[frontier.out_index as usize].coord = coord;
 
         // Add starting node from edge
-        let node_index = nodes.len();
+        let node_index = nodes.len() as NodeIndex;
         nodes.push(Node {
             coord,
             next: [Some(frontier.in_index), None],
@@ -154,7 +158,7 @@ fn build_nodes(
         starting_nodes.insert(&DirectedCoord { coord, direction }, node_index);
     }
 
-    let mut vertical_frontiers = Vec::with_capacity(width);
+    let mut vertical_frontiers = Vec::with_capacity(width as usize);
     for x in 0..width {
         vertical_frontiers.push(open_first_frontier(
             Coord::new(x, 0),
@@ -179,59 +183,59 @@ fn build_nodes(
                 continue;
             }
 
-            let vertical_frontier = &mut vertical_frontiers[x];
+            let vertical_frontier = &mut vertical_frontiers[x as usize];
 
             let next_horizontal_frontier = open_frontier(&mut nodes, coord);
             let next_vertical_frontier = open_frontier(&mut nodes, coord);
 
-            nodes[horizontal_frontier.out_index].coord = coord;
-            nodes[vertical_frontier.out_index].coord = coord;
+            nodes[horizontal_frontier.out_index as usize].coord = coord;
+            nodes[vertical_frontier.out_index as usize].coord = coord;
 
             match map.get(&coord) {
                 '/' => {
-                    nodes[horizontal_frontier.out_index].next =
+                    nodes[horizontal_frontier.out_index as usize].next =
                         [Some(vertical_frontier.in_index), None];
-                    nodes[vertical_frontier.out_index].next =
+                    nodes[vertical_frontier.out_index as usize].next =
                         [Some(horizontal_frontier.in_index), None];
-                    nodes[next_horizontal_frontier.in_index].next =
+                    nodes[next_horizontal_frontier.in_index as usize].next =
                         [Some(next_vertical_frontier.out_index), None];
-                    nodes[next_vertical_frontier.in_index].next =
+                    nodes[next_vertical_frontier.in_index as usize].next =
                         [Some(next_horizontal_frontier.out_index), None];
                 }
                 '\\' => {
-                    nodes[horizontal_frontier.out_index].next =
+                    nodes[horizontal_frontier.out_index as usize].next =
                         [Some(next_vertical_frontier.out_index), None];
-                    nodes[vertical_frontier.out_index].next =
+                    nodes[vertical_frontier.out_index as usize].next =
                         [Some(next_horizontal_frontier.out_index), None];
-                    nodes[next_horizontal_frontier.in_index].next =
+                    nodes[next_horizontal_frontier.in_index as usize].next =
                         [Some(vertical_frontier.in_index), None];
-                    nodes[next_vertical_frontier.in_index].next =
+                    nodes[next_vertical_frontier.in_index as usize].next =
                         [Some(horizontal_frontier.in_index), None];
                 }
                 '|' => {
-                    nodes[horizontal_frontier.out_index].next = [
+                    nodes[horizontal_frontier.out_index as usize].next = [
                         Some(vertical_frontier.in_index),
                         Some(next_vertical_frontier.out_index),
                     ];
-                    nodes[vertical_frontier.out_index].next =
+                    nodes[vertical_frontier.out_index as usize].next =
                         [Some(next_vertical_frontier.out_index), None];
-                    nodes[next_horizontal_frontier.in_index].next = [
+                    nodes[next_horizontal_frontier.in_index as usize].next = [
                         Some(vertical_frontier.in_index),
                         Some(next_vertical_frontier.out_index),
                     ];
-                    nodes[next_vertical_frontier.in_index].next =
+                    nodes[next_vertical_frontier.in_index as usize].next =
                         [Some(vertical_frontier.in_index), None];
                 }
                 '-' => {
-                    nodes[horizontal_frontier.out_index].next =
+                    nodes[horizontal_frontier.out_index as usize].next =
                         [Some(next_horizontal_frontier.out_index), None];
-                    nodes[vertical_frontier.out_index].next = [
+                    nodes[vertical_frontier.out_index as usize].next = [
                         Some(horizontal_frontier.in_index),
                         Some(next_horizontal_frontier.out_index),
                     ];
-                    nodes[next_horizontal_frontier.in_index].next =
+                    nodes[next_horizontal_frontier.in_index as usize].next =
                         [Some(horizontal_frontier.in_index), None];
-                    nodes[next_vertical_frontier.in_index].next = [
+                    nodes[next_vertical_frontier.in_index as usize].next = [
                         Some(horizontal_frontier.in_index),
                         Some(next_horizontal_frontier.out_index),
                     ];
@@ -257,7 +261,7 @@ fn build_nodes(
     for (x, vertical_frontier) in vertical_frontiers.into_iter().enumerate() {
         close_last_frontier(
             vertical_frontier,
-            Coord::new(x, height - 1),
+            Coord::new(x as CoordT, height - 1),
             Direction::Up,
             &mut nodes,
             &mut starting_nodes,
@@ -269,20 +273,20 @@ fn build_nodes(
 
 fn compute_energized_tiles(nodes: &[Node], node_index: NodeIndex, indexer: CoordIndexer) -> u32 {
     let mut queue = VecDeque::<NodeIndex>::new();
-    let mut visited = VecSet::new(LinearIndexer::new(nodes.len()));
+    let mut visited = VecSet::new(LinearIndexer::new(nodes.len() as NodeIndex));
     queue.push_front(node_index);
     visited.insert(node_index);
 
     let mut energized_count = 0;
     let mut energized = VecSet::new(indexer);
-    energized.insert(nodes[node_index].coord);
+    energized.insert(nodes[node_index as usize].coord);
     energized_count += 1;
 
     while let Some(node_index) = queue.pop_front() {
-        let node = &nodes[node_index];
+        let node = &nodes[node_index as usize];
 
         for next_node_index in node.next.iter().flatten() {
-            let next_node = &nodes[*next_node_index];
+            let next_node = &nodes[*next_node_index as usize];
 
             let min_x = next_node.coord.x.min(node.coord.x);
             let max_x = next_node.coord.x.max(node.coord.x);

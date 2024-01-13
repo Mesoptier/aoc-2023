@@ -8,17 +8,18 @@ pub trait Indexer<K> {
     fn index_for(&self, key: &K) -> usize;
 }
 
-pub struct LinearIndexer {
-    len: usize,
+#[derive(Debug, Clone, Copy)]
+pub struct LinearIndexer<T = usize> {
+    len: T,
 }
 
-impl LinearIndexer {
-    pub fn new(len: usize) -> Self {
+impl<T> LinearIndexer<T> {
+    pub fn new(len: T) -> Self {
         Self { len }
     }
 }
 
-impl Indexer<usize> for LinearIndexer {
+impl Indexer<usize> for LinearIndexer<usize> {
     #[inline]
     fn len(&self) -> usize {
         self.len
@@ -27,5 +28,15 @@ impl Indexer<usize> for LinearIndexer {
     #[inline]
     fn index_for(&self, key: &usize) -> usize {
         *key
+    }
+}
+
+impl Indexer<u32> for LinearIndexer<u32> {
+    fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    fn index_for(&self, key: &u32) -> usize {
+        *key as usize
     }
 }
