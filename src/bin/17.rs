@@ -15,12 +15,12 @@ type DirectedCoordIndexer = advent_of_code::util::coord::DirectedCoordIndexer<Co
 type State = DirectedCoord;
 
 struct Entry {
-    cost: u32,
+    estimated_cost: u32,
     state: State,
 }
 impl PartialEq for Entry {
     fn eq(&self, other: &Self) -> bool {
-        self.cost.eq(&other.cost)
+        self.estimated_cost.eq(&other.estimated_cost)
     }
 }
 impl Eq for Entry {}
@@ -31,7 +31,7 @@ impl PartialOrd for Entry {
 }
 impl Ord for Entry {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.cost.cmp(&other.cost).reverse()
+        self.estimated_cost.cmp(&other.estimated_cost).reverse()
     }
 }
 
@@ -64,40 +64,44 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
     let width = coord_indexer.width;
     let height = coord_indexer.height;
 
-    let mut min_heap = BinaryHeap::<Entry>::new();
-    min_heap.push(Entry {
-        cost: 0,
-        state: State::new(0, 0, Direction::Down),
-    });
-    min_heap.push(Entry {
-        cost: 0,
-        state: State::new(0, 0, Direction::Right),
-    });
+    let destination = Coord::new(width - 1, height - 1);
 
+    let heuristic = |state: &State| -> u32 {
+        // Manhattan distance to the destination
+        let State { coord, .. } = state;
+        destination.x - coord.x + destination.y - coord.y
+    };
+
+    let mut min_heap = BinaryHeap::<Entry>::new();
     let mut best_costs: VecMap<DirectedCoord, u32, DirectedCoordIndexer> =
         VecMap::new(DirectedCoordIndexer::new(width, height));
 
+    let state = State::new(0, 0, Direction::Down);
+    best_costs.insert(&state, 0);
+    min_heap.push(Entry {
+        estimated_cost: heuristic(&state),
+        state,
+    });
+
+    let state = State::new(0, 0, Direction::Right);
+    best_costs.insert(&state, 0);
+    min_heap.push(Entry {
+        estimated_cost: heuristic(&state),
+        state,
+    });
+
     while let Some(entry) = min_heap.pop() {
-        let Entry { cost, state } = entry;
+        let Entry { state, .. } = entry;
         let State {
             coord: Coord { x, y },
             direction,
         } = state;
 
-        if x == width - 1 && y == height - 1 {
+        let cost = *best_costs.get(&state).unwrap();
+
+        if x == destination.x && y == destination.y {
             // Found the destination
             return Some(cost);
-        }
-
-        // Check if we already found a better path to this state, and if not, update the best cost
-        match best_costs.entry(&state) {
-            Some(best_cost) if *best_cost <= cost => {
-                // Already found a better path to this state
-                continue;
-            }
-            entry => {
-                *entry = Some(cost);
-            }
         }
 
         let steps_to_edge = match direction {
@@ -124,8 +128,20 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
             if steps >= min_steps {
                 for next_direction in direction.orthogonal() {
                     let next_state = State::new(next_coord.x, next_coord.y, next_direction);
+
+                    match best_costs.entry(&next_state) {
+                        Some(best_cost) if *best_cost <= next_cost => {
+                            // If we've already found a better path to this state, skip it
+                            continue;
+                        }
+                        entry => {
+                            // Otherwise, update the best cost and add the state to the queue
+                            *entry = Some(next_cost);
+                        }
+                    }
+
                     min_heap.push(Entry {
-                        cost: next_cost,
+                        estimated_cost: next_cost + heuristic(&next_state),
                         state: next_state,
                     });
                 }
