@@ -1,3 +1,4 @@
+use advent_of_code::util::{Indexer, VecTable};
 use nom::character::complete::{char, digit1, line_ending};
 use nom::combinator::map_res;
 use nom::multi::separated_list1;
@@ -6,21 +7,43 @@ use nom::IResult;
 
 advent_of_code::solution!(22);
 
-fn parse_input(input: &str) -> IResult<&str, Vec<([usize; 3], [usize; 3])>> {
+type CoordT = u32;
+type Coord = [CoordT; 3];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CoordIndexer {
+    dimensions: [CoordT; 3],
+}
+
+impl Indexer<Coord> for CoordIndexer {
+    fn len(&self) -> usize {
+        self.dimensions.iter().product::<CoordT>() as usize
+    }
+
+    fn index_for(&self, key: &Coord) -> usize {
+        let [x, y, z] = key;
+        let [width, height, _] = self.dimensions;
+        (z * height * width + y * width + x) as usize
+    }
+}
+
+type Grid = VecTable<Coord, bool, CoordIndexer>;
+
+fn parse_input(input: &str) -> IResult<&str, Vec<(Coord, Coord)>> {
     separated_list1(
         line_ending,
         separated_pair(parse_coord, char('~'), parse_coord),
     )(input)
 }
 
-fn parse_coord(input: &str) -> IResult<&str, [usize; 3]> {
+fn parse_coord(input: &str) -> IResult<&str, Coord> {
     let (input, x) = map_res(digit1, str::parse)(input)?;
     let (input, y) = preceded(char(','), map_res(digit1, str::parse))(input)?;
     let (input, z) = preceded(char(','), map_res(digit1, str::parse))(input)?;
     Ok((input, [x, y, z]))
 }
 
-fn build_empty_grid(bricks: &[([usize; 3], [usize; 3])]) -> Vec<Vec<Vec<bool>>> {
+fn build_empty_grid(bricks: &[(Coord, Coord)]) -> Grid {
     let [max_x, max_y, max_z] = bricks.iter().fold(
         [0, 0, 0],
         |[max_x, max_y, max_z], ([x, y, z], [x2, y2, z2])| {
@@ -32,25 +55,29 @@ fn build_empty_grid(bricks: &[([usize; 3], [usize; 3])]) -> Vec<Vec<Vec<bool>>> 
         },
     );
 
-    let mut grid = vec![vec![vec![false; max_z + 1]; max_y + 1]; max_x + 1];
+    let indexer = CoordIndexer {
+        dimensions: [max_x + 1, max_y + 1, max_z + 1],
+    };
+
+    let mut grid = VecTable::new(indexer);
 
     // Mark floor as blocked
     for x in 0..=max_x {
         for y in 0..=max_y {
-            grid[x][y][0] = true;
+            grid[[x, y, 0]] = true;
         }
     }
 
     grid
 }
 
-fn is_resting(grid: &Vec<Vec<Vec<bool>>>, brick_lo: [usize; 3], brick_hi: [usize; 3]) -> bool {
+fn is_resting(grid: &Grid, brick_lo: Coord, brick_hi: Coord) -> bool {
     let [x_lo, y_lo, z_lo] = brick_lo;
     let [x_hi, y_hi, _] = brick_hi;
 
     for x in x_lo..=x_hi {
         for y in y_lo..=y_hi {
-            if grid[x][y][z_lo - 1] {
+            if grid[[x, y, z_lo - 1]] {
                 return true;
             }
         }
@@ -59,19 +86,14 @@ fn is_resting(grid: &Vec<Vec<Vec<bool>>>, brick_lo: [usize; 3], brick_hi: [usize
     false
 }
 
-fn mark_grid(
-    grid: &mut Vec<Vec<Vec<bool>>>,
-    brick_lo: [usize; 3],
-    brick_hi: [usize; 3],
-    state: bool,
-) {
+fn mark_grid(grid: &mut Grid, brick_lo: Coord, brick_hi: Coord, state: bool) {
     let [x_lo, y_lo, z_lo] = brick_lo;
     let [x_hi, y_hi, z_hi] = brick_hi;
 
     for x in x_lo..=x_hi {
         for y in y_lo..=y_hi {
             for z in z_lo..=z_hi {
-                grid[x][y][z] = state;
+                grid[[x, y, z]] = state;
             }
         }
     }
