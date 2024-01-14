@@ -121,36 +121,53 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
             continue;
         }
 
+        let (dx, dy) = match direction {
+            Direction::Up => (0, (-1i32) as u32),
+            Direction::Right => (1, 0),
+            Direction::Down => (0, 1),
+            Direction::Left => ((-1i32) as u32, 0),
+        };
+
         let mut next_cost = cost;
-        for steps in 1..=max_steps.min(steps_to_edge) {
-            let next_coord = match direction {
-                Direction::Up => Coord::new(x, y - steps),
-                Direction::Right => Coord::new(x + steps, y),
-                Direction::Down => Coord::new(x, y + steps),
-                Direction::Left => Coord::new(x - steps, y),
-            };
+        let mut x = x;
+        let mut y = y;
+
+        for _ in 1..min_steps {
+            x = x.wrapping_add(dx);
+            y = y.wrapping_add(dy);
+
+            let next_coord = Coord::new(x, y);
+            next_cost += grid.get(&next_coord);
+        }
+
+        for _ in min_steps..=max_steps.min(steps_to_edge) {
+            x = x.wrapping_add(dx);
+            y = y.wrapping_add(dy);
+
+            let next_coord = Coord::new(x, y);
             next_cost += grid.get(&next_coord);
 
-            if steps >= min_steps {
-                for next_direction in direction.orthogonal() {
-                    let next_state = State::new(next_coord.x, next_coord.y, next_direction);
+            for next_direction in direction.orthogonal() {
+                let next_state = State {
+                    coord: next_coord,
+                    direction: next_direction,
+                };
 
-                    match best_costs.entry(&next_state) {
-                        Some(best_cost) if *best_cost <= next_cost => {
-                            // If we've already found a better path to this state, skip it
-                            continue;
-                        }
-                        entry => {
-                            // Otherwise, update the best cost and add the state to the queue
-                            *entry = Some(next_cost);
-                        }
+                match best_costs.entry(&next_state) {
+                    Some(best_cost) if *best_cost <= next_cost => {
+                        // If we've already found a better path to this state, skip it
+                        continue;
                     }
-
-                    min_heap.push(Entry {
-                        estimated_cost: next_cost + heuristic(&next_state),
-                        state: next_state,
-                    });
+                    entry => {
+                        // Otherwise, update the best cost and add the state to the queue
+                        *entry = Some(next_cost);
+                    }
                 }
+
+                min_heap.push(Entry {
+                    estimated_cost: next_cost + heuristic(&next_state),
+                    state: next_state,
+                });
             }
         }
     }
