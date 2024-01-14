@@ -22,6 +22,7 @@ name = "advent_of_code"
 version = "0.10.0"
 dependencies = [
  "arrayvec",
+ "bucket_queue",
  "chrono",
  "dhat",
  "enum_dispatch",
@@ -79,6 +80,12 @@ name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
+
+[[package]]
+name = "bucket_queue"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "899ef58ed41750685cdd9900e2a49e66477835f639ca6798650a6e13e62b5463"
 
 [[package]]
 name = "bumpalo"

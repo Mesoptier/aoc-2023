@@ -1,8 +1,7 @@
-use std::cmp::Ordering;
-use std::collections::BinaryHeap;
-
 use advent_of_code::util::coord::Direction;
 use advent_of_code::util::{Indexer, VecMap, VecSet, VecTable};
+
+use bucket_queue::{BucketQueue, LastInFirstOutQueue};
 
 advent_of_code::solution!(17);
 
@@ -64,27 +63,6 @@ impl Indexer<State> for StateIndexer {
     }
 }
 
-struct Entry {
-    estimated_cost: u32,
-    state: State,
-}
-impl PartialEq for Entry {
-    fn eq(&self, other: &Self) -> bool {
-        self.estimated_cost.eq(&other.estimated_cost)
-    }
-}
-impl Eq for Entry {}
-impl PartialOrd for Entry {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl Ord for Entry {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.estimated_cost.cmp(&other.estimated_cost).reverse()
-    }
-}
-
 fn parse_input(input: &str) -> VecTable<Coord, u32, CoordIndexer> {
     let mut width = None;
     let data = input
@@ -123,7 +101,7 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
         destination.x - coord.x + destination.y - coord.y
     };
 
-    let mut min_heap = BinaryHeap::<Entry>::new();
+    let mut queue = BucketQueue::<Vec<State>>::new();
     let mut best_costs: VecMap<State, u32, StateIndexer> =
         VecMap::new(StateIndexer::new(width, height));
     let mut visited = VecSet::new(StateIndexer::new(width, height));
@@ -133,23 +111,16 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
         axis: Axis::Horizontal,
     };
     best_costs.insert(&state, 0);
-    min_heap.push(Entry {
-        estimated_cost: heuristic(&state),
-        state,
-    });
+    queue.push(state, heuristic(&state) as usize);
 
     let state = State {
         coord: start,
         axis: Axis::Vertical,
     };
     best_costs.insert(&state, 0);
-    min_heap.push(Entry {
-        estimated_cost: heuristic(&state),
-        state,
-    });
+    queue.push(state, heuristic(&state) as usize);
 
-    while let Some(entry) = min_heap.pop() {
-        let Entry { state, .. } = entry;
+    while let Some(state) = queue.pop_min() {
         let State {
             coord: Coord { x, y },
             axis,
@@ -221,10 +192,7 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
                     }
                 }
 
-                min_heap.push(Entry {
-                    estimated_cost: next_cost + heuristic(&next_state),
-                    state: next_state,
-                });
+                queue.push(next_state, (next_cost + heuristic(&next_state)) as usize);
             }
         }
     }
