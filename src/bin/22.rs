@@ -9,6 +9,7 @@ advent_of_code::solution!(22);
 
 type CoordT = u32;
 type Coord = [CoordT; 3];
+type Brick = (Coord, Coord);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct CoordIndexer {
@@ -29,7 +30,7 @@ impl Indexer<Coord> for CoordIndexer {
 
 type Grid = VecTable<Coord, bool, CoordIndexer>;
 
-fn parse_input(input: &str) -> IResult<&str, Vec<(Coord, Coord)>> {
+fn parse_input(input: &str) -> IResult<&str, Vec<Brick>> {
     separated_list1(
         line_ending,
         separated_pair(parse_coord, char('~'), parse_coord),
@@ -43,7 +44,7 @@ fn parse_coord(input: &str) -> IResult<&str, Coord> {
     Ok((input, [x, y, z]))
 }
 
-fn build_empty_grid(bricks: &[(Coord, Coord)]) -> Grid {
+fn build_empty_grid(bricks: &[Brick]) -> Grid {
     let [max_x, max_y, max_z] = bricks.iter().fold(
         [0, 0, 0],
         |[max_x, max_y, max_z], ([x, y, z], [x2, y2, z2])| {
@@ -71,9 +72,8 @@ fn build_empty_grid(bricks: &[(Coord, Coord)]) -> Grid {
     grid
 }
 
-fn is_resting(grid: &Grid, brick_lo: Coord, brick_hi: Coord) -> bool {
-    let [x_lo, y_lo, z_lo] = brick_lo;
-    let [x_hi, y_hi, _] = brick_hi;
+fn is_resting(grid: &Grid, brick: Brick) -> bool {
+    let ([x_lo, y_lo, z_lo], [x_hi, y_hi, _]) = brick;
 
     for x in x_lo..=x_hi {
         for y in y_lo..=y_hi {
@@ -86,9 +86,8 @@ fn is_resting(grid: &Grid, brick_lo: Coord, brick_hi: Coord) -> bool {
     false
 }
 
-fn mark_grid(grid: &mut Grid, brick_lo: Coord, brick_hi: Coord, state: bool) {
-    let [x_lo, y_lo, z_lo] = brick_lo;
-    let [x_hi, y_hi, z_hi] = brick_hi;
+fn mark_grid(grid: &mut Grid, brick: Brick, state: bool) {
+    let ([x_lo, y_lo, z_lo], [x_hi, y_hi, z_hi]) = brick;
 
     for x in x_lo..=x_hi {
         for y in y_lo..=y_hi {
@@ -111,10 +110,10 @@ pub fn part_one(input: &str) -> Option<u32> {
 
     while !falling_bricks.is_empty() {
         // Remove resting bricks from falling bricks
-        falling_bricks.retain(|&(brick_lo, brick_hi)| {
-            if is_resting(&grid, brick_lo, brick_hi) {
-                resting_bricks.push((brick_lo, brick_hi));
-                mark_grid(&mut grid, brick_lo, brick_hi, true);
+        falling_bricks.retain(|&brick| {
+            if is_resting(&grid, brick) {
+                resting_bricks.push(brick);
+                mark_grid(&mut grid, brick, true);
 
                 false
             } else {
@@ -134,13 +133,11 @@ pub fn part_one(input: &str) -> Option<u32> {
     // Count resting bricks that can be removed, without then causing other bricks to fall
     let result = resting_bricks
         .iter()
-        .filter(|(brick_lo, brick_hi)| {
+        .filter(|&&brick| {
             let mut grid = grid.clone();
-            mark_grid(&mut grid, *brick_lo, *brick_hi, false);
+            mark_grid(&mut grid, brick, false);
 
-            resting_bricks
-                .iter()
-                .all(|(brick_lo, brick_hi)| is_resting(&grid, *brick_lo, *brick_hi))
+            resting_bricks.iter().all(|&brick| is_resting(&grid, brick))
         })
         .count();
 
@@ -159,10 +156,10 @@ pub fn part_two(input: &str) -> Option<u32> {
 
     while !falling_bricks.is_empty() {
         // Remove resting bricks from falling bricks
-        falling_bricks.retain(|&(brick_lo, brick_hi)| {
-            if is_resting(&grid, brick_lo, brick_hi) {
-                resting_bricks.push((brick_lo, brick_hi));
-                mark_grid(&mut grid, brick_lo, brick_hi, true);
+        falling_bricks.retain(|&brick| {
+            if is_resting(&grid, brick) {
+                resting_bricks.push(brick);
+                mark_grid(&mut grid, brick, true);
 
                 false
             } else {
@@ -189,9 +186,9 @@ pub fn part_two(input: &str) -> Option<u32> {
             // Count non-resting bricks
             falling_bricks
                 .into_iter()
-                .filter(|&(brick_lo, brick_hi)| {
-                    if is_resting(&grid, brick_lo, brick_hi) {
-                        mark_grid(&mut grid, brick_lo, brick_hi, true);
+                .filter(|&brick| {
+                    if is_resting(&grid, brick) {
+                        mark_grid(&mut grid, brick, true);
 
                         false
                     } else {
