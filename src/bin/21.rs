@@ -30,53 +30,67 @@ fn parse_input(input: &str) -> (Grid, Coord) {
 }
 
 fn count_reached_tiles(grid: &Grid, grid_center: Coord, steps: u32) -> Vec<u32> {
-    let mut frontier = vec![Coord::new(0, 0)];
-    let mut reached_tiles = Vec::with_capacity(steps as usize + 1);
-    reached_tiles.push(1);
+    // Indexer for the tiles reachable within the number of steps
+    // TODO: This is still wasteful, since we can actually only reach a diamond-shaped subset of the grid
+    let full_grid_indexer = CoordIndexer::new(2 * steps + 1, 2 * steps + 1);
+    let full_grid_center = Coord::new(steps, steps);
 
-    // TODO: Avoid recomputing visited tiles, since they'll just flip-flop between true and false
+    let mut visited = VecSet::new(full_grid_indexer);
+    let mut frontier = vec![full_grid_center];
+    visited.insert(full_grid_center);
+
+    let to_grid_coord = |coord: Coord| -> Coord {
+        let x = (coord.x + grid_center.x) as i32 - full_grid_center.x as i32;
+        let y = (coord.y + grid_center.y) as i32 - full_grid_center.y as i32;
+        Coord::new(
+            x.rem_euclid(grid.indexer().width as i32) as CoordT,
+            y.rem_euclid(grid.indexer().height as i32) as CoordT,
+        )
+    };
+
+    let mut odd_reached = 1; // Start at 1 because the center is always reached
+    let mut even_reached = 0;
+
+    let mut reached = Vec::with_capacity((steps + 1) as usize);
+    reached.push(odd_reached);
 
     for step in 0..steps {
         let mut new_frontier = Vec::new();
 
-        let dim = (step + 1) * 2 + 1;
-        let mut visited = VecSet::<Coord, CoordIndexer>::new(CoordIndexer::new(dim, dim));
-
-        let new_frontier_center = Coord::new(step + 1, step + 1);
-
         for coord in frontier {
-            let coord = Coord::new(coord.x + 1, coord.y + 1);
             let neighbors = [
-                Coord::new(coord.x, coord.y - 1),
-                Coord::new(coord.x, coord.y + 1),
                 Coord::new(coord.x - 1, coord.y),
                 Coord::new(coord.x + 1, coord.y),
+                Coord::new(coord.x, coord.y - 1),
+                Coord::new(coord.x, coord.y + 1),
             ];
 
-            for next_coord in neighbors {
-                if visited.insert(next_coord) {
-                    let grid_x =
-                        (grid_center.x + next_coord.x) as i32 - new_frontier_center.x as i32;
-                    let grid_y =
-                        (grid_center.y + next_coord.y) as i32 - new_frontier_center.y as i32;
-                    let grid_coord = Coord::new(
-                        grid_x.rem_euclid(grid.indexer().width as i32) as CoordT,
-                        grid_y.rem_euclid(grid.indexer().height as i32) as CoordT,
-                    );
-                    if *grid.get(&grid_coord) {
-                        continue;
-                    }
-
-                    new_frontier.push(next_coord);
+            for neighbor in neighbors {
+                if !visited.insert(neighbor) {
+                    continue;
                 }
+
+                let grid_coord = to_grid_coord(neighbor);
+                if *grid.get(&grid_coord) {
+                    continue;
+                }
+
+                new_frontier.push(neighbor);
             }
         }
 
         frontier = new_frontier;
-        reached_tiles.push(frontier.len() as u32);
+
+        if step % 2 == 0 {
+            even_reached += frontier.len() as u32;
+            reached.push(even_reached);
+        } else {
+            odd_reached += frontier.len() as u32;
+            reached.push(odd_reached);
+        }
     }
 
-    reached_tiles
+    reached
 }
 
 fn gaussian_elimination<const N: usize, const M: usize>(mut matrix: [[f32; M]; N]) -> [f32; N] {
