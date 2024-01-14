@@ -223,5 +223,7 @@ mod tests {
     }
 
     #[test]
-    fn test_part_two() {}
+    fn test_part_two() {
+        // The solution to part two makes assumptions about the real input, and so doesn't work for the example input.
+    }
 }
