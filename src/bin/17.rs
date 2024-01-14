@@ -100,14 +100,24 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
             }
         }
 
+        let steps_to_edge = match direction {
+            Direction::Up => y,
+            Direction::Right => width - x - 1,
+            Direction::Down => height - y - 1,
+            Direction::Left => x,
+        };
+        if steps_to_edge < min_steps {
+            // Not enough space to move in this direction
+            continue;
+        }
+
         let mut next_cost = cost;
-        for steps in 1..=max_steps {
+        for steps in 1..=max_steps.min(steps_to_edge) {
             let next_coord = match direction {
-                Direction::Up if y >= steps => Coord::new(x, y - steps),
-                Direction::Right if x + steps < width => Coord::new(x + steps, y),
-                Direction::Down if y + steps < height => Coord::new(x, y + steps),
-                Direction::Left if x >= steps => Coord::new(x - steps, y),
-                _ => break,
+                Direction::Up => Coord::new(x, y - steps),
+                Direction::Right => Coord::new(x + steps, y),
+                Direction::Down => Coord::new(x, y + steps),
+                Direction::Left => Coord::new(x - steps, y),
             };
             next_cost += grid.get(&next_coord);
 
