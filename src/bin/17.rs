@@ -2,17 +2,67 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 use advent_of_code::util::coord::Direction;
-use advent_of_code::util::{VecMap, VecSet, VecTable};
+use advent_of_code::util::{Indexer, VecMap, VecSet, VecTable};
 
 advent_of_code::solution!(17);
 
 type CoordT = u32;
 type Coord = advent_of_code::util::coord::Coord<CoordT>;
-type DirectedCoord = advent_of_code::util::coord::DirectedCoord<CoordT>;
 type CoordIndexer = advent_of_code::util::coord::CoordIndexer<CoordT>;
-type DirectedCoordIndexer = advent_of_code::util::coord::DirectedCoordIndexer<CoordT>;
 
-type State = DirectedCoord;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Axis {
+    Horizontal,
+    Vertical,
+}
+
+impl Axis {
+    fn orthogonal(&self) -> Axis {
+        match self {
+            Axis::Horizontal => Axis::Vertical,
+            Axis::Vertical => Axis::Horizontal,
+        }
+    }
+
+    fn directions(&self) -> [Direction; 2] {
+        match self {
+            Axis::Horizontal => [Direction::Left, Direction::Right],
+            Axis::Vertical => [Direction::Up, Direction::Down],
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct State {
+    coord: Coord,
+    axis: Axis,
+}
+
+struct StateIndexer {
+    coord_indexer: CoordIndexer,
+}
+impl StateIndexer {
+    fn new(width: CoordT, height: CoordT) -> Self {
+        Self {
+            coord_indexer: CoordIndexer::new(width, height),
+        }
+    }
+}
+impl Indexer<State> for StateIndexer {
+    fn len(&self) -> usize {
+        self.coord_indexer.len() * 2
+    }
+
+    fn index_for(&self, key: &State) -> usize {
+        let State { coord, axis } = key;
+        let coord_index = self.coord_indexer.index_for(coord);
+        let axis_index = match axis {
+            Axis::Horizontal => 0,
+            Axis::Vertical => 1,
+        };
+        coord_index * 2 + axis_index
+    }
+}
 
 struct Entry {
     estimated_cost: u32,
@@ -64,6 +114,7 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
     let width = coord_indexer.width;
     let height = coord_indexer.height;
 
+    let start = Coord::new(0, 0);
     let destination = Coord::new(width - 1, height - 1);
 
     let heuristic = |state: &State| -> u32 {
@@ -73,18 +124,24 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
     };
 
     let mut min_heap = BinaryHeap::<Entry>::new();
-    let mut best_costs: VecMap<DirectedCoord, u32, DirectedCoordIndexer> =
-        VecMap::new(DirectedCoordIndexer::new(width, height));
-    let mut visited = VecSet::new(DirectedCoordIndexer::new(width, height));
+    let mut best_costs: VecMap<State, u32, StateIndexer> =
+        VecMap::new(StateIndexer::new(width, height));
+    let mut visited = VecSet::new(StateIndexer::new(width, height));
 
-    let state = State::new(0, 0, Direction::Down);
+    let state = State {
+        coord: start,
+        axis: Axis::Horizontal,
+    };
     best_costs.insert(&state, 0);
     min_heap.push(Entry {
         estimated_cost: heuristic(&state),
         state,
     });
 
-    let state = State::new(0, 0, Direction::Right);
+    let state = State {
+        coord: start,
+        axis: Axis::Vertical,
+    };
     best_costs.insert(&state, 0);
     min_heap.push(Entry {
         estimated_cost: heuristic(&state),
@@ -95,7 +152,7 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
         let Entry { state, .. } = entry;
         let State {
             coord: Coord { x, y },
-            direction,
+            axis,
         } = state;
 
         if !visited.insert(state) {
@@ -110,47 +167,47 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
             return Some(cost);
         }
 
-        let steps_to_edge = match direction {
-            Direction::Up => y,
-            Direction::Right => width - x - 1,
-            Direction::Down => height - y - 1,
-            Direction::Left => x,
-        };
-        if steps_to_edge < min_steps {
-            // Not enough space to move in this direction
-            continue;
-        }
+        for direction in axis.directions() {
+            let steps_to_edge = match direction {
+                Direction::Up => y,
+                Direction::Right => width - x - 1,
+                Direction::Down => height - y - 1,
+                Direction::Left => x,
+            };
+            if steps_to_edge < min_steps {
+                // Not enough space to move in this direction
+                continue;
+            }
 
-        let (dx, dy) = match direction {
-            Direction::Up => (0, (-1i32) as u32),
-            Direction::Right => (1, 0),
-            Direction::Down => (0, 1),
-            Direction::Left => ((-1i32) as u32, 0),
-        };
+            let (dx, dy) = match direction {
+                Direction::Up => (0, (-1i32) as u32),
+                Direction::Right => (1, 0),
+                Direction::Down => (0, 1),
+                Direction::Left => ((-1i32) as u32, 0),
+            };
 
-        let mut next_cost = cost;
-        let mut x = x;
-        let mut y = y;
+            let mut next_cost = cost;
+            let mut x = x;
+            let mut y = y;
 
-        for _ in 1..min_steps {
-            x = x.wrapping_add(dx);
-            y = y.wrapping_add(dy);
+            for _ in 1..min_steps {
+                x = x.wrapping_add(dx);
+                y = y.wrapping_add(dy);
 
-            let next_coord = Coord::new(x, y);
-            next_cost += grid.get(&next_coord);
-        }
+                let next_coord = Coord::new(x, y);
+                next_cost += grid.get(&next_coord);
+            }
 
-        for _ in min_steps..=max_steps.min(steps_to_edge) {
-            x = x.wrapping_add(dx);
-            y = y.wrapping_add(dy);
+            for _ in min_steps..=max_steps.min(steps_to_edge) {
+                x = x.wrapping_add(dx);
+                y = y.wrapping_add(dy);
 
-            let next_coord = Coord::new(x, y);
-            next_cost += grid.get(&next_coord);
+                let next_coord = Coord::new(x, y);
+                next_cost += grid.get(&next_coord);
 
-            for next_direction in direction.orthogonal() {
                 let next_state = State {
                     coord: next_coord,
-                    direction: next_direction,
+                    axis: axis.orthogonal(),
                 };
 
                 match best_costs.entry(&next_state) {
