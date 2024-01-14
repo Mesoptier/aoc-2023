@@ -1,43 +1,69 @@
-use std::collections::HashSet;
+use advent_of_code::util::{VecSet, VecTable};
 
 advent_of_code::solution!(21);
 
-fn parse_input(input: &str) -> (Vec<Vec<bool>>, (usize, usize)) {
-    let mut start = None;
-    let grid = input
+type CoordT = u32;
+type Coord = advent_of_code::util::coord::Coord<CoordT>;
+type CoordIndexer = advent_of_code::util::coord::CoordIndexer<CoordT>;
+type Grid = VecTable<Coord, bool, CoordIndexer>;
+
+fn parse_input(input: &str) -> (Grid, Coord) {
+    let mut width = None;
+    let data = input
         .lines()
-        .enumerate()
-        .map(|(y, line)| {
-            line.chars()
-                .enumerate()
-                .map(|(x, c)| {
-                    if c == 'S' {
-                        start = Some((x, y));
-                    }
-                    c == '#'
-                })
-                .collect::<Vec<_>>()
+        .flat_map(|line| {
+            if width.is_none() {
+                width = Some(line.len());
+            } else {
+                debug_assert_eq!(width.unwrap(), line.len());
+            }
+            line.chars().map(|c| c == '#')
         })
         .collect::<Vec<_>>();
-    (grid, start.unwrap())
+    let width = width.unwrap();
+    let height = data.len() / width;
+    let indexer = CoordIndexer::new(width as CoordT, height as CoordT);
+    (
+        Grid::from_vec(data, indexer),
+        Coord::new(width as CoordT / 2, height as CoordT / 2),
+    )
 }
 
-fn count_reached_tiles(grid: &[Vec<bool>], start: (usize, usize), steps: u32) -> u32 {
-    let mut frontier = HashSet::new();
-    frontier.insert((start.0 as isize, start.1 as isize));
+fn count_reached_tiles(grid: &Grid, grid_center: Coord, steps: u32) -> u32 {
+    let mut frontier = vec![Coord::new(0, 0)];
 
-    let width = grid[0].len() as isize;
-    let height = grid.len() as isize;
+    for step in 0..steps {
+        let mut new_frontier = Vec::new();
 
-    for _ in 0..steps {
-        let mut new_frontier = HashSet::new();
+        let dim = (step + 1) * 2 + 1;
+        let mut visited = VecSet::<Coord, CoordIndexer>::new(CoordIndexer::new(dim, dim));
 
-        for (x, y) in frontier {
-            let neighbors = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)];
+        let new_frontier_center = Coord::new(step + 1, step + 1);
 
-            for (nx, ny) in neighbors {
-                if !grid[ny.rem_euclid(height) as usize][nx.rem_euclid(width) as usize] {
-                    new_frontier.insert((nx, ny));
+        for coord in frontier {
+            let coord = Coord::new(coord.x + 1, coord.y + 1);
+            let neighbors = [
+                Coord::new(coord.x, coord.y - 1),
+                Coord::new(coord.x, coord.y + 1),
+                Coord::new(coord.x - 1, coord.y),
+                Coord::new(coord.x + 1, coord.y),
+            ];
+
+            for next_coord in neighbors {
+                if visited.insert(next_coord) {
+                    let grid_x =
+                        (grid_center.x + next_coord.x) as i32 - new_frontier_center.x as i32;
+                    let grid_y =
+                        (grid_center.y + next_coord.y) as i32 - new_frontier_center.y as i32;
+                    let grid_coord = Coord::new(
+                        grid_x.rem_euclid(grid.indexer().width as i32) as CoordT,
+                        grid_y.rem_euclid(grid.indexer().height as i32) as CoordT,
+                    );
+                    if *grid.get(&grid_coord) {
+                        continue;
+                    }
+
+                    new_frontier.push(next_coord);
                 }
             }
         }
