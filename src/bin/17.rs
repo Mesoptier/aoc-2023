@@ -4,28 +4,11 @@ use std::collections::BinaryHeap;
 use advent_of_code::util::coord::{
     Coord, CoordIndexer, DirectedCoord, DirectedCoordIndexer, Direction,
 };
-use advent_of_code::util::{LinearIndexer, VecMap, VecTable};
+use advent_of_code::util::{VecMap, VecTable};
 
 advent_of_code::solution!(17);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct State {
-    directed_coord: DirectedCoord,
-    direction_steps: usize,
-}
-
-impl State {
-    fn new(x: usize, y: usize, direction: Direction, direction_steps: usize) -> Self {
-        Self {
-            directed_coord: DirectedCoord::new(x, y, direction),
-            direction_steps,
-        }
-    }
-
-    fn coord(&self) -> Coord {
-        self.directed_coord.coord
-    }
-}
+type State = DirectedCoord;
 
 struct Entry {
     cost: u32,
@@ -70,6 +53,9 @@ fn parse_input(input: &str) -> VecTable<Coord, u32, CoordIndexer> {
 fn solve(input: &str, ultra: bool) -> Option<u32> {
     let grid = parse_input(input);
 
+    let min_steps = if ultra { 4 } else { 1 };
+    let max_steps = if ultra { 10 } else { 3 };
+
     let coord_indexer = *grid.indexer();
     let width = coord_indexer.width;
     let height = coord_indexer.height;
@@ -77,41 +63,30 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
     let mut min_heap = BinaryHeap::<Entry>::new();
     min_heap.push(Entry {
         cost: 0,
-        state: State::new(0, 0, Direction::Down, 0),
+        state: State::new(0, 0, Direction::Down),
     });
     min_heap.push(Entry {
         cost: 0,
-        state: State::new(0, 0, Direction::Right, 0),
+        state: State::new(0, 0, Direction::Right),
     });
 
-    let mut best_costs: VecMap<
-        DirectedCoord,
-        VecMap<usize, u32, LinearIndexer>,
-        DirectedCoordIndexer,
-    > = VecMap::new(DirectedCoordIndexer::new(width, height));
+    let mut best_costs: VecMap<DirectedCoord, u32, DirectedCoordIndexer> =
+        VecMap::new(DirectedCoordIndexer::new(width, height));
 
     while let Some(entry) = min_heap.pop() {
         let Entry { cost, state } = entry;
         let State {
-            directed_coord:
-                DirectedCoord {
-                    coord: Coord { x, y },
-                    direction,
-                },
-            direction_steps,
+            coord: Coord { x, y },
+            direction,
         } = state;
 
-        if x == width - 1 && y == height - 1 && (!ultra || direction_steps >= 4) {
+        if x == width - 1 && y == height - 1 {
             // Found the destination
             return Some(cost);
         }
 
         // Check if we already found a better path to this state, and if not, update the best cost
-        match best_costs
-            .entry(&state.directed_coord)
-            .get_or_insert_with(|| VecMap::new(LinearIndexer::new(if ultra { 10 } else { 4 })))
-            .entry(&state.direction_steps)
-        {
+        match best_costs.entry(&state) {
             Some(best_cost) if *best_cost <= cost => {
                 // Already found a better path to this state
                 continue;
@@ -121,61 +96,25 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
             }
         }
 
-        for next_direction in [
-            Direction::Up,
-            Direction::Right,
-            Direction::Down,
-            Direction::Left,
-        ] {
-            if next_direction == direction.opposite() {
-                // Can't reverse direction
-                continue;
-            }
-
-            let next_direction_steps = if next_direction == direction {
-                direction_steps + 1
-            } else {
-                1
+        let mut next_cost = cost;
+        for steps in 1..=max_steps {
+            let next_coord = match direction {
+                Direction::Up if y >= steps => Coord::new(x, y - steps),
+                Direction::Right if x + steps < width => Coord::new(x + steps, y),
+                Direction::Down if y + steps < height => Coord::new(x, y + steps),
+                Direction::Left if x >= steps => Coord::new(x - steps, y),
+                _ => break,
             };
+            next_cost += grid.get(&next_coord);
 
-            if !ultra {
-                if next_direction_steps > 3 {
-                    // Can't go in the same direction for more than 3 steps
-                    continue;
+            if steps >= min_steps {
+                for next_direction in direction.orthogonal() {
+                    let next_state = State::new(next_coord.x, next_coord.y, next_direction);
+                    min_heap.push(Entry {
+                        cost: next_cost,
+                        state: next_state,
+                    });
                 }
-            } else {
-                if next_direction_steps > 10 {
-                    // Can't go in the same direction for more than 10 steps
-                    continue;
-                }
-                if direction_steps < 4 && next_direction != direction {
-                    // Can't change direction before 3 steps
-                    continue;
-                }
-            }
-
-            let next_state = match next_direction {
-                Direction::Up if y > 0 => {
-                    Some(State::new(x, y - 1, next_direction, next_direction_steps))
-                }
-                Direction::Right if x + 1 < width => {
-                    Some(State::new(x + 1, y, next_direction, next_direction_steps))
-                }
-                Direction::Down if y + 1 < height => {
-                    Some(State::new(x, y + 1, next_direction, next_direction_steps))
-                }
-                Direction::Left if x > 0 => {
-                    Some(State::new(x - 1, y, next_direction, next_direction_steps))
-                }
-                _ => None,
-            };
-
-            if let Some(next_state) = next_state {
-                let next_cost = cost + grid.get(&next_state.coord());
-                min_heap.push(Entry {
-                    cost: next_cost,
-                    state: next_state,
-                });
             }
         }
     }

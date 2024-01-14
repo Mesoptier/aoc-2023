@@ -24,6 +24,13 @@ impl Direction {
             Direction::Left => Direction::Right,
         }
     }
+    
+    pub fn orthogonal(self) -> [Self; 2] {
+        match self {
+            Direction::Up | Direction::Down => [Direction::Left, Direction::Right],
+            Direction::Right | Direction::Left => [Direction::Up, Direction::Down],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
