@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 use advent_of_code::util::coord::Direction;
-use advent_of_code::util::{VecMap, VecTable};
+use advent_of_code::util::{VecMap, VecSet, VecTable};
 
 advent_of_code::solution!(17);
 
@@ -75,6 +75,7 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
     let mut min_heap = BinaryHeap::<Entry>::new();
     let mut best_costs: VecMap<DirectedCoord, u32, DirectedCoordIndexer> =
         VecMap::new(DirectedCoordIndexer::new(width, height));
+    let mut visited = VecSet::new(DirectedCoordIndexer::new(width, height));
 
     let state = State::new(0, 0, Direction::Down);
     best_costs.insert(&state, 0);
@@ -96,6 +97,11 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
             coord: Coord { x, y },
             direction,
         } = state;
+
+        if !visited.insert(state) {
+            // Already visited this state
+            continue;
+        }
 
         let cost = *best_costs.get(&state).unwrap();
 
