@@ -29,8 +29,10 @@ fn parse_input(input: &str) -> (Grid, Coord) {
     )
 }
 
-fn count_reached_tiles(grid: &Grid, grid_center: Coord, steps: u32) -> u32 {
+fn count_reached_tiles(grid: &Grid, grid_center: Coord, steps: u32) -> Vec<u32> {
     let mut frontier = vec![Coord::new(0, 0)];
+    let mut reached_tiles = Vec::with_capacity(steps as usize + 1);
+    reached_tiles.push(1);
 
     for step in 0..steps {
         let mut new_frontier = Vec::new();
@@ -69,38 +71,68 @@ fn count_reached_tiles(grid: &Grid, grid_center: Coord, steps: u32) -> u32 {
         }
 
         frontier = new_frontier;
+        reached_tiles.push(frontier.len() as u32);
     }
 
-    frontier.len() as u32
+    reached_tiles
+}
+
+fn gaussian_elimination<const N: usize, const M: usize>(mut matrix: [[f32; M]; N]) -> [f32; N] {
+    for i in 0..N {
+        // Find pivot for column i
+        let mut pivot_row = i;
+        for j in i + 1..N {
+            if matrix[j][i].abs() > matrix[pivot_row][i].abs() {
+                pivot_row = j;
+            }
+        }
+
+        // Swap rows i and pivot_row
+        matrix.swap(i, pivot_row);
+
+        // Eliminate column i for rows i+1..N
+        for j in i + 1..N {
+            let factor = matrix[j][i] / matrix[i][i];
+            for k in i..M {
+                matrix[j][k] -= factor * matrix[i][k];
+            }
+        }
+    }
+
+    // Back substitution
+    let mut x = [0.; N];
+    for i in (0..N).rev() {
+        x[i] = matrix[i][N];
+        for j in i + 1..N {
+            x[i] -= matrix[i][j] * x[j];
+        }
+        x[i] /= matrix[i][i];
+    }
+
+    x
 }
 
 fn solve_part_one(input: &str, steps: u32) -> Option<u32> {
     let (grid, start) = parse_input(input);
-    Some(count_reached_tiles(&grid, start, steps))
+    count_reached_tiles(&grid, start, steps).last().copied()
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
     solve_part_one(input, 64)
 }
 
-pub fn part_two(_input: &str) -> Option<usize> {
-    // let (grid, start) = parse_input(input);
+pub fn part_two(input: &str) -> Option<usize> {
+    let (grid, start) = parse_input(input);
 
     // c_x, where x = (num_steps - 65) / 131
 
-    // let c_naive = |x: u32| {
-    //     let num_steps = 65 + 131 * x;
-    //     count_reached_tiles(&grid, start, num_steps) as usize
-    // };
+    let num_steps = |x: u32| 65 + 131 * x;
+    let reached_tiles = count_reached_tiles(&grid, start, num_steps(3));
 
-    // let c_0 = c_naive(0);
-    // let c_1 = c_naive(1);
-    // let c_2 = c_naive(2);
-    // let c_3 = c_naive(3);
-    // let c_0 = 3832;
-    // let c_1 = 33967;
-    // let c_2 = 94056;
-    // let c_3 = 184099;
+    let c_0 = reached_tiles[num_steps(0) as usize];
+    let c_1 = reached_tiles[num_steps(1) as usize];
+    let c_2 = reached_tiles[num_steps(2) as usize];
+    let c_3 = reached_tiles[num_steps(3) as usize];
 
     // There are two types of diamonds in the input grid (A and B). Each diamond (once filled) can be in one of two
     // states, based on parity of number of steps and which ring it's in. These are labeled a1, a2, b1, b2.
@@ -131,11 +163,21 @@ pub fn part_two(_input: &str) -> Option<usize> {
     // c_x (if x is odd) -> (x+1)^2, (x-1)^2 + 2(x-1)
     // c_x (if x is even) -> x^2 + 2x, x^2
 
-    // We can solve this system of equations to get the following:
-    let a1 = 3832;
-    let a2 = 3651;
-    let b1 = 3747;
-    let b2 = 3747;
+    // System of equations (as augmented matrix):
+    // a1 b1 a2 b2 | c
+    let augmented_matrix = [
+        [1., 0., 0., 0., c_0 as f32],
+        [4., 4., 1., 0., c_1 as f32],
+        [9., 8., 4., 4., c_2 as f32],
+        [16., 16., 9., 8., c_3 as f32],
+    ];
+
+    // Gaussian elimination:
+    let [a1, b1, a2, b2] = gaussian_elimination(augmented_matrix);
+    let a1 = a1.round() as usize;
+    let b1 = b1.round() as usize;
+    let a2 = a2.round() as usize;
+    let b2 = b2.round() as usize;
 
     // We can then use these values to get a formula for c_x:
     let c = |x: usize| {
