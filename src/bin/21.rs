@@ -34,6 +34,8 @@ fn count_reached_tiles(grid: &Grid, grid_center: Coord, steps: u32) -> Vec<u32> 
     let mut reached_tiles = Vec::with_capacity(steps as usize + 1);
     reached_tiles.push(1);
 
+    // TODO: Avoid recomputing visited tiles, since they'll just flip-flop between true and false
+
     for step in 0..steps {
         let mut new_frontier = Vec::new();
 
@@ -78,6 +80,8 @@ fn count_reached_tiles(grid: &Grid, grid_center: Coord, steps: u32) -> Vec<u32> 
 }
 
 fn gaussian_elimination<const N: usize, const M: usize>(mut matrix: [[f32; M]; N]) -> [f32; N] {
+    // TODO: Integer version of this algorithm
+
     for i in 0..N {
         // Find pivot for column i
         let mut pivot_row = i;
