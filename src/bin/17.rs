@@ -1,12 +1,16 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-use advent_of_code::util::coord::{
-    Coord, CoordIndexer, DirectedCoord, DirectedCoordIndexer, Direction,
-};
+use advent_of_code::util::coord::Direction;
 use advent_of_code::util::{VecMap, VecTable};
 
 advent_of_code::solution!(17);
+
+type CoordT = u32;
+type Coord = advent_of_code::util::coord::Coord<CoordT>;
+type DirectedCoord = advent_of_code::util::coord::DirectedCoord<CoordT>;
+type CoordIndexer = advent_of_code::util::coord::CoordIndexer<CoordT>;
+type DirectedCoordIndexer = advent_of_code::util::coord::DirectedCoordIndexer<CoordT>;
 
 type State = DirectedCoord;
 
@@ -46,7 +50,7 @@ fn parse_input(input: &str) -> VecTable<Coord, u32, CoordIndexer> {
         .collect::<Vec<_>>();
     let width = width.unwrap();
     let height = data.len() / width;
-    let indexer = CoordIndexer::new(width, height);
+    let indexer = CoordIndexer::new(width as CoordT, height as CoordT);
     VecTable::from_vec(data, indexer)
 }
 
