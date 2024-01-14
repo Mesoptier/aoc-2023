@@ -3,7 +3,7 @@ use std::borrow::{Borrow, BorrowMut};
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VecTable<K, V, I, D = Vec<V>> {
     data: D,
     indexer: I,
