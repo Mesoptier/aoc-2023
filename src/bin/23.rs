@@ -220,7 +220,7 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
 
         let reachable = {
             let mut reachable = BitSet::new();
-            let mut queue = VecDeque::new();
+            let mut queue = VecDeque::with_capacity(36);
             queue.push_back(node);
 
             while let Some(node) = queue.pop_front() {
