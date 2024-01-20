@@ -22,6 +22,10 @@ where
         self.map.insert(&value, ()).is_none()
     }
 
+    pub fn remove(&mut self, value: &V) -> bool {
+        self.map.remove(value).is_some()
+    }
+
     /// Returns `true` if the set contains a value.
     pub fn contains(&self, value: &V) -> bool {
         self.map.contains_key(value)

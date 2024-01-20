@@ -35,26 +35,6 @@ impl TryFrom<char> for Tile {
     }
 }
 
-struct BitSet(usize);
-
-impl BitSet {
-    fn new() -> Self {
-        BitSet(0)
-    }
-
-    fn contains(&self, index: usize) -> bool {
-        self.0 & (1 << index) != 0
-    }
-
-    fn insert(&mut self, index: usize) {
-        self.0 |= 1 << index;
-    }
-
-    fn remove(&mut self, index: usize) {
-        self.0 &= !(1 << index);
-    }
-}
-
 fn parse_input(input: &str) -> (Grid, Coord, Coord) {
     // Parse the grid
     let mut width = None;
@@ -199,18 +179,18 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
         node: NodeIndex,
         target_node: NodeIndex,
         trails_map: &TrailsMap,
-        visited: &mut BitSet,
+        visited: &mut VecSet<NodeIndex, LinearIndexer<NodeIndex>>,
     ) -> Option<u32> {
         if node == target_node {
             // We've reached the target node
             return Some(0);
         }
 
-        if visited.contains(node as usize) {
+        if visited.contains(&node) {
             // We've already visited this node, so we can't continue exploring
             return None;
         }
-        visited.insert(node as usize);
+        visited.insert(node);
 
         let result = trails_map[node]
             .iter()
@@ -220,11 +200,16 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
             })
             .max();
 
-        visited.remove(node as usize);
+        visited.remove(&node);
         result
     }
 
-    find_longest_hike(start_node, target_node, &trails_map, &mut BitSet::new())
+    find_longest_hike(
+        start_node,
+        target_node,
+        &trails_map,
+        &mut VecSet::new(*trails_map.indexer()),
+    )
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
