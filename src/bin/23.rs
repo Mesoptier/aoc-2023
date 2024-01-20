@@ -35,6 +35,23 @@ impl TryFrom<char> for Tile {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+struct BitSet(u64);
+
+impl BitSet {
+    fn new() -> Self {
+        BitSet(0)
+    }
+
+    fn get(&self, index: u32) -> bool {
+        (self.0 & (1 << index)) != 0
+    }
+
+    fn set(&mut self, index: u32) {
+        self.0 |= 1 << index;
+    }
+}
+
 fn parse_input(input: &str) -> (Grid, Coord, Coord) {
     // Parse the grid
     let mut width = None;
@@ -174,42 +191,29 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
     let (trails_map, start_node, target_node) =
         gather_trails(grid, start_coord, target_coord, part_two);
 
-    // Find the longest hike from the start to the target, without visiting any node twice
-    fn find_longest_hike(
-        node: NodeIndex,
-        target_node: NodeIndex,
-        trails_map: &TrailsMap,
-        visited: &mut VecSet<NodeIndex, LinearIndexer<NodeIndex>>,
-    ) -> Option<u32> {
+    let mut stack = Vec::new();
+    let mut max_steps = 0;
+
+    stack.push((start_node, 0, BitSet::new()));
+
+    while let Some((node, steps, mut visited)) = stack.pop() {
         if node == target_node {
-            // We've reached the target node
-            return Some(0);
+            max_steps = max_steps.max(steps);
+            continue;
         }
 
-        if visited.contains(&node) {
-            // We've already visited this node, so we can't continue exploring
-            return None;
+        if visited.get(node) {
+            continue;
         }
-        visited.insert(node);
 
-        let result = trails_map[node]
-            .iter()
-            .filter_map(|&(next_node, steps)| {
-                find_longest_hike(next_node, target_node, trails_map, visited)
-                    .map(|next_steps| next_steps + steps)
-            })
-            .max();
+        visited.set(node);
 
-        visited.remove(&node);
-        result
+        for &(next_node, next_steps) in &trails_map[node] {
+            stack.push((next_node, steps + next_steps, visited));
+        }
     }
 
-    find_longest_hike(
-        start_node,
-        target_node,
-        &trails_map,
-        &mut VecSet::new(*trails_map.indexer()),
-    )
+    Some(max_steps)
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
