@@ -227,13 +227,9 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
                 reachable.set(node);
 
                 for &(next_node, _) in &trails_map[node] {
-                    if visited.get(next_node) {
+                    if visited.get(next_node) || reachable.get(next_node) {
                         continue;
                     }
-                    if reachable.get(next_node) {
-                        continue;
-                    }
-
                     queue.push_back(next_node);
                 }
             }
