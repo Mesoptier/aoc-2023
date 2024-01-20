@@ -220,6 +220,7 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
 
         visited.set(node);
 
+        // Compute the set of nodes reachable from this node
         let reachable = {
             let mut reachable = BitSet::new();
             inner_queue.clear();
