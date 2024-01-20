@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use arrayvec::ArrayVec;
 
@@ -35,7 +35,7 @@ impl TryFrom<char> for Tile {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 struct BitSet(u64);
 
 impl BitSet {
@@ -44,10 +44,12 @@ impl BitSet {
     }
 
     fn get(&self, index: u32) -> bool {
+        debug_assert!(index < 64);
         (self.0 & (1 << index)) != 0
     }
 
     fn set(&mut self, index: u32) {
+        debug_assert!(index < 64);
         self.0 |= 1 << index;
     }
 }
@@ -188,11 +190,19 @@ fn gather_trails(
 fn solve(input: &str, part_two: bool) -> Option<u32> {
     let (grid, start_coord, target_coord) = parse_input(input);
 
-    let (trails_map, start_node, target_node) =
+    let (mut trails_map, start_node, target_node) =
         gather_trails(grid, start_coord, target_coord, part_two);
+
+    for trails in trails_map.values_mut() {
+        // Sort the trails by length, so DFS considers the longest trails first. (Note the list is sorted in increasing
+        // order, but since the stack is LIFO, the longest trails will be considered first.)
+        trails.sort_unstable_by_key(|&(_, steps)| steps);
+    }
 
     let mut stack = Vec::new();
     let mut max_steps = 0;
+
+    let mut cache = HashMap::<(NodeIndex, BitSet), u32>::new();
 
     stack.push((start_node, 0, BitSet::new()));
 
@@ -207,6 +217,37 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
         }
 
         visited.set(node);
+
+        let reachable = {
+            let mut reachable = BitSet::new();
+            let mut queue = VecDeque::new();
+            queue.push_back(node);
+
+            while let Some(node) = queue.pop_front() {
+                reachable.set(node);
+
+                for &(next_node, _) in &trails_map[node] {
+                    if visited.get(next_node) {
+                        continue;
+                    }
+                    if reachable.get(next_node) {
+                        continue;
+                    }
+
+                    queue.push_back(next_node);
+                }
+            }
+
+            reachable
+        };
+
+        // Prune the path if we've already found a path to this node that's at least as long and can still reach the
+        // same set of nodes.
+        let cache_key = (node, reachable);
+        match cache.get(&cache_key) {
+            Some(&cached_steps) if cached_steps >= steps => continue,
+            _ => cache.insert(cache_key, steps),
+        };
 
         for &(next_node, next_steps) in &trails_map[node] {
             stack.push((next_node, steps + next_steps, visited));
