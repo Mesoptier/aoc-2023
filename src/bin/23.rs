@@ -206,6 +206,8 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
 
     stack.push((start_node, 0, BitSet::new()));
 
+    let mut inner_queue = VecDeque::with_capacity(36);
+
     while let Some((node, steps, mut visited)) = stack.pop() {
         if node == target_node {
             max_steps = max_steps.max(steps);
@@ -220,17 +222,17 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
 
         let reachable = {
             let mut reachable = BitSet::new();
-            let mut queue = VecDeque::with_capacity(36);
-            queue.push_back(node);
+            inner_queue.clear();
+            inner_queue.push_back(node);
 
-            while let Some(node) = queue.pop_front() {
+            while let Some(node) = inner_queue.pop_front() {
                 reachable.set(node);
 
                 for &(next_node, _) in &trails_map[node] {
                     if visited.get(next_node) || reachable.get(next_node) {
                         continue;
                     }
-                    queue.push_back(next_node);
+                    inner_queue.push_back(next_node);
                 }
             }
 
