@@ -54,6 +54,26 @@ impl BitSet {
     }
 }
 
+struct Cache {
+    cache: HashMap<(NodeIndex, BitSet), u32>,
+}
+
+impl Cache {
+    fn new() -> Self {
+        Cache {
+            cache: HashMap::new(),
+        }
+    }
+
+    fn get(&self, node: NodeIndex, reachable: BitSet) -> Option<u32> {
+        self.cache.get(&(node, reachable)).copied()
+    }
+
+    fn insert(&mut self, node: NodeIndex, reachable: BitSet, steps: u32) {
+        self.cache.insert((node, reachable), steps);
+    }
+}
+
 fn parse_input(input: &str) -> (Grid, Coord, Coord) {
     // Parse the grid
     let mut width = None;
@@ -202,7 +222,7 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
     let mut stack = Vec::new();
     let mut max_steps = 0;
 
-    let mut cache = HashMap::<(NodeIndex, BitSet), u32>::new();
+    let mut cache = Cache::new();
 
     stack.push((start_node, 0, BitSet::new()));
 
@@ -247,10 +267,9 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
 
         // Prune the path if we've already found a path to this node that's at least as long and can still reach the
         // same set of nodes.
-        let cache_key = (node, reachable);
-        match cache.get(&cache_key) {
-            Some(&cached_steps) if cached_steps >= steps => continue,
-            _ => cache.insert(cache_key, steps),
+        match cache.get(node, reachable) {
+            Some(cached_steps) if cached_steps >= steps => continue,
+            _ => cache.insert(node, reachable, steps),
         };
 
         for &(next_node, next_steps) in &trails_map[node] {
