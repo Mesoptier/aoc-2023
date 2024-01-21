@@ -240,6 +240,11 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
             reachable
         };
 
+        // Prune the path if we can't reach the target node from this node
+        if !reachable.get(target_node) {
+            continue;
+        }
+
         // Prune the path if we've already found a path to this node that's at least as long and can still reach the
         // same set of nodes.
         let cache_key = (node, reachable);
