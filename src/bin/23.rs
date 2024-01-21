@@ -35,7 +35,7 @@ impl TryFrom<char> for Tile {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, Ord, PartialOrd)]
 struct BitSet(u64);
 
 impl BitSet {
@@ -51,6 +51,26 @@ impl BitSet {
     fn set(&mut self, index: u32) {
         debug_assert!(index < 64);
         self.0 |= 1 << index;
+    }
+}
+
+struct Cache {
+    cache: VecTable<NodeIndex, HashMap<BitSet, u32>, LinearIndexer<NodeIndex>>,
+}
+
+impl Cache {
+    fn new(indexer: LinearIndexer<NodeIndex>) -> Self {
+        Cache {
+            cache: VecTable::new(indexer),
+        }
+    }
+
+    fn get(&self, node: NodeIndex, reachable: BitSet) -> Option<u32> {
+        self.cache[node].get(&reachable).copied()
+    }
+
+    fn insert(&mut self, node: NodeIndex, reachable: BitSet, steps: u32) {
+        self.cache[node].insert(reachable, steps);
     }
 }
 
@@ -202,7 +222,7 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
     let mut stack = Vec::new();
     let mut max_steps = 0;
 
-    let mut cache = HashMap::<(NodeIndex, BitSet), u32>::new();
+    let mut cache = Cache::new(*trails_map.indexer());
 
     stack.push((start_node, 0, BitSet::new()));
 
@@ -247,10 +267,9 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
 
         // Prune the path if we've already found a path to this node that's at least as long and can still reach the
         // same set of nodes.
-        let cache_key = (node, reachable);
-        match cache.get(&cache_key) {
-            Some(&cached_steps) if cached_steps >= steps => continue,
-            _ => cache.insert(cache_key, steps),
+        match cache.get(node, reachable) {
+            Some(cached_steps) if cached_steps >= steps => continue,
+            _ => cache.insert(node, reachable, steps),
         };
 
         for &(next_node, next_steps) in &trails_map[node] {
