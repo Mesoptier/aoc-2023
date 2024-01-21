@@ -35,7 +35,7 @@ impl TryFrom<char> for Tile {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, Ord, PartialOrd)]
 struct BitSet(u64);
 
 impl BitSet {
@@ -55,22 +55,22 @@ impl BitSet {
 }
 
 struct Cache {
-    cache: HashMap<(NodeIndex, BitSet), u32>,
+    cache: VecTable<NodeIndex, HashMap<BitSet, u32>, LinearIndexer<NodeIndex>>,
 }
 
 impl Cache {
-    fn new() -> Self {
+    fn new(indexer: LinearIndexer<NodeIndex>) -> Self {
         Cache {
-            cache: HashMap::new(),
+            cache: VecTable::new(indexer),
         }
     }
 
     fn get(&self, node: NodeIndex, reachable: BitSet) -> Option<u32> {
-        self.cache.get(&(node, reachable)).copied()
+        self.cache[node].get(&reachable).copied()
     }
 
     fn insert(&mut self, node: NodeIndex, reachable: BitSet, steps: u32) {
-        self.cache.insert((node, reachable), steps);
+        self.cache[node].insert(reachable, steps);
     }
 }
 
@@ -222,7 +222,7 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
     let mut stack = Vec::new();
     let mut max_steps = 0;
 
-    let mut cache = Cache::new();
+    let mut cache = Cache::new(*trails_map.indexer());
 
     stack.push((start_node, 0, BitSet::new()));
 
