@@ -2,9 +2,9 @@
   "data": [
     {
       "day": "01",
-      "part_1": "69.3µs",
-      "part_2": "195.7µs",
-      "total_nanos": 265000
+      "part_1": "25.7µs",
+      "part_2": "32.1µs",
+      "total_nanos": 57800
     },
     {
       "day": "02",
