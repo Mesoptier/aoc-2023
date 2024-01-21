@@ -1,5 +1,7 @@
 use crate::util::Indexer;
+use num::One;
 use std::marker::PhantomData;
+use std::ops::{Add, Sub};
 
 // TODO: Rename to North, East, South, West
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -24,7 +26,7 @@ impl Direction {
             Direction::Left => Direction::Right,
         }
     }
-    
+
     pub fn orthogonal(self) -> [Self; 2] {
         match self {
             Direction::Up | Direction::Down => [Direction::Left, Direction::Right],
@@ -42,6 +44,30 @@ pub struct Coord<T = usize> {
 impl<T> Coord<T> {
     pub fn new(x: T, y: T) -> Self {
         Self { x, y }
+    }
+
+    pub fn step_unchecked(&self, direction: Direction) -> Self
+    where
+        T: Add<Output = T> + Sub<Output = T> + One + Copy,
+    {
+        match direction {
+            Direction::Up => Self {
+                x: self.x,
+                y: self.y - T::one(),
+            },
+            Direction::Right => Self {
+                x: self.x + T::one(),
+                y: self.y,
+            },
+            Direction::Down => Self {
+                x: self.x,
+                y: self.y + T::one(),
+            },
+            Direction::Left => Self {
+                x: self.x - T::one(),
+                y: self.y,
+            },
+        }
     }
 }
 

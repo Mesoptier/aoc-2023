@@ -1,35 +1,16 @@
+use std::collections::{HashMap, VecDeque};
+
 use arrayvec::ArrayVec;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::iter::once;
+
+use advent_of_code::util::coord::Direction;
+use advent_of_code::util::{LinearIndexer, VecMap, VecSet, VecTable};
+
 advent_of_code::solution!(23);
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-enum Direction {
-    North,
-    South,
-    East,
-    West,
-}
-
-impl Direction {
-    fn opposite(&self) -> Self {
-        match self {
-            Direction::North => Direction::South,
-            Direction::South => Direction::North,
-            Direction::East => Direction::West,
-            Direction::West => Direction::East,
-        }
-    }
-
-    fn step_unchecked(&self, x: usize, y: usize) -> (usize, usize) {
-        match self {
-            Direction::North => (x, y - 1),
-            Direction::South => (x, y + 1),
-            Direction::East => (x + 1, y),
-            Direction::West => (x - 1, y),
-        }
-    }
-}
+type CoordT = u32;
+type Coord = advent_of_code::util::coord::Coord<CoordT>;
+type CoordIndexer = advent_of_code::util::coord::CoordIndexer<CoordT>;
+type Grid = VecTable<Coord, Tile, CoordIndexer>;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 enum Tile {
@@ -45,105 +26,118 @@ impl TryFrom<char> for Tile {
         match value {
             '.' => Ok(Tile::Path),
             '#' => Ok(Tile::Forest),
-            '^' => Ok(Tile::Slope(Direction::North)),
-            'v' => Ok(Tile::Slope(Direction::South)),
-            '>' => Ok(Tile::Slope(Direction::East)),
-            '<' => Ok(Tile::Slope(Direction::West)),
+            '^' => Ok(Tile::Slope(Direction::Up)),
+            'v' => Ok(Tile::Slope(Direction::Down)),
+            '>' => Ok(Tile::Slope(Direction::Right)),
+            '<' => Ok(Tile::Slope(Direction::Left)),
             _ => Err(()),
         }
     }
 }
 
-struct BitSet(usize);
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
+struct BitSet(u64);
 
 impl BitSet {
     fn new() -> Self {
         BitSet(0)
     }
 
-    fn contains(&self, index: usize) -> bool {
-        self.0 & (1 << index) != 0
+    fn get(&self, index: u32) -> bool {
+        debug_assert!(index < 64);
+        (self.0 & (1 << index)) != 0
     }
 
-    fn insert(&mut self, index: usize) {
+    fn set(&mut self, index: u32) {
+        debug_assert!(index < 64);
         self.0 |= 1 << index;
-    }
-
-    fn remove(&mut self, index: usize) {
-        self.0 &= !(1 << index);
     }
 }
 
-fn solve(input: &str, part_two: bool) -> Option<u32> {
-    type Node = (usize, usize);
-    type TrailsMap = HashMap<Node, ArrayVec<(Node, u32), 12>>;
-
-    let grid = input
+fn parse_input(input: &str) -> (Grid, Coord, Coord) {
+    // Parse the grid
+    let mut width = None;
+    let data = input
         .lines()
-        .map(|line| {
-            line.chars()
-                .map(Tile::try_from)
-                .map(Result::unwrap)
-                .collect::<Vec<_>>()
+        .flat_map(|line| {
+            if width.is_none() {
+                width = Some(line.len());
+            } else {
+                debug_assert_eq!(width.unwrap(), line.len());
+            }
+            line.chars().map(Tile::try_from).map(Result::unwrap)
         })
         .collect::<Vec<_>>();
+    let width = width.unwrap();
+    let height = data.len() / width;
+    let indexer = CoordIndexer::new(width as CoordT, height as CoordT);
+    let grid = Grid::from_vec(data, indexer);
 
     // Find the start and target nodes
-    let start_node = (
-        grid.first()
-            .unwrap()
-            .iter()
-            .position(|&tile| tile == Tile::Path)
-            .unwrap(),
-        0,
-    );
-    let target_node = (
-        grid.last()
-            .unwrap()
-            .iter()
-            .position(|&tile| tile == Tile::Path)
-            .unwrap(),
-        grid.len() - 1,
-    );
+    let start_node = (0..indexer.width)
+        .map(|x| Coord::new(x, 0))
+        .find(|&c| grid[c] == Tile::Path)
+        .unwrap();
+    let target_node = (0..indexer.width)
+        .map(|x| Coord::new(x, indexer.height - 1))
+        .find(|&c| grid[c] == Tile::Path)
+        .unwrap();
 
-    // Gather all trails
-    let mut trails_map = TrailsMap::new();
+    (grid, start_node, target_node)
+}
+
+type NodeIndex = u32;
+type TrailsMap = VecTable<NodeIndex, ArrayVec<(NodeIndex, CoordT), 4>, LinearIndexer<NodeIndex>>;
+fn gather_trails(
+    grid: Grid,
+    start_coord: Coord,
+    target_coord: Coord,
+    part_two: bool,
+) -> (TrailsMap, NodeIndex, NodeIndex) {
+    let mut index_map = VecMap::<Coord, NodeIndex, CoordIndexer>::new(*grid.indexer());
+    let mut trails_data = vec![];
 
     let mut queue = VecDeque::new();
-    let mut visited = HashSet::new();
+    let mut visited = VecSet::<Coord, CoordIndexer>::new(*grid.indexer());
+    queue.push_back((start_coord, Direction::Down));
+    visited.insert(start_coord);
 
-    queue.push_back((start_node, Direction::South));
-    visited.insert(start_node);
+    trails_data.push(ArrayVec::new());
+    index_map.insert(&start_coord, 0);
 
-    while let Some((node, direction)) = queue.pop_front() {
-        let (mut x, mut y) = node;
+    while let Some((from_coord, direction)) = queue.pop_front() {
         let mut steps = 0;
 
-        (x, y) = direction.step_unchecked(x, y);
+        let from_index = *index_map.get(&from_coord).unwrap();
+        let mut coord = from_coord.step_unchecked(direction);
+        let mut incoming_direction = direction;
         steps += 1;
 
-        let mut incoming_direction = direction;
-
         loop {
-            if (x, y) == target_node || (x, y) == start_node {
-                trails_map.entry(node).or_default().push(((x, y), steps));
+            if coord == target_coord || coord == start_coord {
+                let index = *index_map.entry(&coord).get_or_insert_with(|| {
+                    let index = trails_data.len() as NodeIndex;
+                    trails_data.push(ArrayVec::new());
+                    index
+                });
+                trails_data[from_index as usize].push((index, steps));
                 break;
             }
 
             let paths = [
-                Direction::North,
-                Direction::South,
-                Direction::East,
-                Direction::West,
+                Direction::Up,
+                Direction::Down,
+                Direction::Right,
+                Direction::Left,
             ]
             .into_iter()
             .filter(|&direction| direction != incoming_direction.opposite())
             .filter_map(|direction| {
-                let (x, y) = direction.step_unchecked(x, y);
-                match grid[y][x] {
-                    Tile::Path => Some((x, y, direction)),
+                let coord = coord.step_unchecked(direction);
+                match grid[coord] {
+                    Tile::Path => Some((coord, direction)),
                     Tile::Slope(slope_direction) if slope_direction == direction || part_two => {
-                        Some((x, y, direction))
+                        Some((coord, direction))
                     }
                     _ => None,
                 }
@@ -154,21 +148,26 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
                 0 => unreachable!("Invalid trail"),
                 1 => {
                     // Continue on the same path
-                    (x, y, incoming_direction) = paths[0];
+                    (coord, incoming_direction) = paths[0];
                     steps += 1;
                 }
                 _ => {
-                    // Node is an intersection
-                    trails_map.entry(node).or_default().push(((x, y), steps));
+                    // Current coord is an intersection
+                    let index = *index_map.entry(&coord).get_or_insert_with(|| {
+                        let index = trails_data.len() as NodeIndex;
+                        trails_data.push(ArrayVec::new());
+                        index
+                    });
+                    trails_data[from_index as usize].push((index, steps));
 
-                    if visited.insert((x, y)) {
-                        // We haven't visited this node before, so we need to explore it
-                        for (_, _, direction) in paths {
-                            queue.push_back(((x, y), direction));
+                    if visited.insert(coord) {
+                        // We haven't visited this coord before, so we need to explore it
+                        for (_, direction) in paths {
+                            queue.push_back((coord, direction));
                         }
 
                         if part_two {
-                            queue.push_back(((x, y), incoming_direction.opposite()));
+                            queue.push_back((coord, incoming_direction.opposite()));
                         }
                     }
 
@@ -178,61 +177,88 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
         }
     }
 
-    // Convert the node coordinates to indices, for faster lookup
-    type NodeIndex = usize;
-    type TrailsIndexMap = Vec<ArrayVec<(NodeIndex, u32), 12>>;
-    let node_map = trails_map
-        .keys()
-        .chain(once(&target_node))
-        .enumerate()
-        .map(|(index, &node)| (node, index))
-        .collect::<HashMap<_, _>>();
-    let trails_map: TrailsIndexMap = {
-        let mut result = vec![ArrayVec::new(); trails_map.len()];
-        for (node, trails) in trails_map {
-            let node_index = node_map[&node];
-            result[node_index].extend(
-                trails
-                    .into_iter()
-                    .map(|(node, steps)| (node_map[&node], steps)),
-            )
-        }
-        result
-    };
-    let start_node = node_map[&start_node];
-    let target_node = node_map[&target_node];
+    let start_index = *index_map.get(&start_coord).unwrap();
+    let target_index = *index_map.get(&target_coord).unwrap();
+    let indexer = LinearIndexer::new(trails_data.len() as NodeIndex);
+    (
+        TrailsMap::from_vec(trails_data, indexer),
+        start_index,
+        target_index,
+    )
+}
 
-    // Find the longest hike from the start to the target, without visiting any node twice
-    fn find_longest_hike(
-        node: NodeIndex,
-        target_node: NodeIndex,
-        trails_map: &TrailsIndexMap,
-        visited: &mut BitSet,
-    ) -> Option<u32> {
-        if node == target_node {
-            // We've reached the target node
-            return Some(0);
-        }
+fn solve(input: &str, part_two: bool) -> Option<u32> {
+    let (grid, start_coord, target_coord) = parse_input(input);
 
-        if visited.contains(node) {
-            // We've already visited this node, so we can't continue exploring
-            return None;
-        }
-        visited.insert(node);
+    let (mut trails_map, start_node, target_node) =
+        gather_trails(grid, start_coord, target_coord, part_two);
 
-        let result = trails_map[node]
-            .iter()
-            .filter_map(|&(next_node, steps)| {
-                find_longest_hike(next_node, target_node, trails_map, visited)
-                    .map(|next_steps| next_steps + steps)
-            })
-            .max();
-
-        visited.remove(node);
-        result
+    for trails in trails_map.values_mut() {
+        // Sort the trails by length, so DFS considers the longest trails first. (Note the list is sorted in increasing
+        // order, but since the stack is LIFO, the longest trails will be considered first.)
+        trails.sort_unstable_by_key(|&(_, steps)| steps);
     }
 
-    find_longest_hike(start_node, target_node, &trails_map, &mut BitSet::new())
+    let mut stack = Vec::new();
+    let mut max_steps = 0;
+
+    let mut cache = HashMap::<(NodeIndex, BitSet), u32>::new();
+
+    stack.push((start_node, 0, BitSet::new()));
+
+    let mut inner_queue = VecDeque::with_capacity(36);
+
+    while let Some((node, steps, mut visited)) = stack.pop() {
+        if node == target_node {
+            max_steps = max_steps.max(steps);
+            continue;
+        }
+
+        if visited.get(node) {
+            continue;
+        }
+
+        visited.set(node);
+
+        // Compute the set of nodes reachable from this node
+        let reachable = {
+            let mut reachable = BitSet::new();
+            inner_queue.clear();
+            inner_queue.push_back(node);
+
+            while let Some(node) = inner_queue.pop_front() {
+                reachable.set(node);
+
+                for &(next_node, _) in &trails_map[node] {
+                    if visited.get(next_node) || reachable.get(next_node) {
+                        continue;
+                    }
+                    inner_queue.push_back(next_node);
+                }
+            }
+
+            reachable
+        };
+
+        // Prune the path if we can't reach the target node from this node
+        if !reachable.get(target_node) {
+            continue;
+        }
+
+        // Prune the path if we've already found a path to this node that's at least as long and can still reach the
+        // same set of nodes.
+        let cache_key = (node, reachable);
+        match cache.get(&cache_key) {
+            Some(&cached_steps) if cached_steps >= steps => continue,
+            _ => cache.insert(cache_key, steps),
+        };
+
+        for &(next_node, next_steps) in &trails_map[node] {
+            stack.push((next_node, steps + next_steps, visited));
+        }
+    }
+
+    Some(max_steps)
 }
 
 pub fn part_one(input: &str) -> Option<u32> {

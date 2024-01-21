@@ -105,6 +105,11 @@ where
         }
     }
 
+    /// Returns an iterator over the values in the table.
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.data.borrow_mut().iter_mut()
+    }
+
     /// Inserts the given value at the given key and returns the previous value.
     pub fn insert(&mut self, key: &K, value: V) -> V {
         std::mem::replace(self.get_mut(key), value)
