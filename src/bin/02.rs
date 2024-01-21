@@ -1,14 +1,14 @@
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{digit1, line_ending};
-use nom::combinator::map_res;
-use nom::multi::separated_list0;
+use nom::combinator::{map_res, opt, value};
+use nom::multi::{fold_many0, separated_list0};
 use nom::sequence::{delimited, preceded, separated_pair};
 use nom::IResult;
 
 advent_of_code::solution!(2);
 
-fn parse_input(input: &str) -> IResult<&str, Vec<Vec<(u32, u32, u32)>>> {
+fn parse_input(input: &str) -> IResult<&str, Vec<Vec<[u32; 3]>>> {
     separated_list0(
         line_ending,
         preceded(
@@ -18,34 +18,30 @@ fn parse_input(input: &str) -> IResult<&str, Vec<Vec<(u32, u32, u32)>>> {
     )(input)
 }
 
-fn parse_set(input: &str) -> IResult<&str, (u32, u32, u32)> {
-    let (input, values) = separated_list0(
-        tag(", "),
-        separated_pair(
-            map_res(digit1, str::parse::<u32>),
-            tag(" "),
-            alt((tag("red"), tag("green"), tag("blue"))),
+fn parse_set(input: &str) -> IResult<&str, [u32; 3]> {
+    fold_many0(
+        preceded(
+            opt(tag(", ")),
+            separated_pair(
+                map_res(digit1, str::parse::<u32>),
+                tag(" "),
+                alt((
+                    value(0, tag("red")),
+                    value(1, tag("green")),
+                    value(2, tag("blue")),
+                )),
+            ),
         ),
-    )(input)?;
-
-    let mut red = 0;
-    let mut green = 0;
-    let mut blue = 0;
-
-    for (value, color) in values {
-        match color {
-            "red" => red += value,
-            "green" => green += value,
-            "blue" => blue += value,
-            _ => unreachable!(),
-        }
-    }
-
-    Ok((input, (red, green, blue)))
+        || [0; 3],
+        |mut rgb, (value, idx)| {
+            rgb[idx] += value;
+            rgb
+        },
+    )(input)
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
-    let (_, games) = parse_input(input).ok()?;
+    let (_, games) = parse_input(input).unwrap();
 
     let max_red = 12;
     let max_green = 13;
@@ -55,7 +51,7 @@ pub fn part_one(input: &str) -> Option<u32> {
         .iter()
         .enumerate()
         .filter(|(_, game)| {
-            game.iter().all(|(red, green, blue)| {
+            game.iter().all(|[red, green, blue]| {
                 *red <= max_red && *green <= max_green && *blue <= max_blue
             })
         })
@@ -65,14 +61,14 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    let (_, games) = parse_input(input).ok()?;
+    let (_, games) = parse_input(input).unwrap();
 
     games
         .iter()
         .map(|game| {
             let (max_red, max_green, max_blue) = game.iter().fold(
                 (0, 0, 0),
-                |(max_red, max_green, max_blue), (red, green, blue)| {
+                |(max_red, max_green, max_blue), [red, green, blue]| {
                     (
                         max_red.max(*red),
                         max_green.max(*green),
