@@ -122,7 +122,106 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    let grid = CharGrid::new(input);
+
+    let parse_num_rtl = |x: usize, y: usize| -> u32 {
+        let mut num = 0;
+        let mut mul = 1;
+        for x in (0..=x).rev() {
+            if let Some(d) = grid.get(x, y).unwrap().to_digit(10) {
+                num += d * mul;
+                mul *= 10;
+            } else {
+                break;
+            }
+        }
+        num
+    };
+    let parse_num_ltr = |x: usize, y: usize| -> u32 {
+        let mut num = 0;
+        for x in x..grid.width {
+            if let Some(d) = grid.get(x, y).unwrap().to_digit(10) {
+                num = num * 10 + d;
+            } else {
+                break;
+            }
+        }
+        num
+    };
+
+    let mut result = 0;
+
+    for y in 1..(grid.height - 1) {
+        for x in 1..(grid.width - 1) {
+            if grid.get(x, y).unwrap() != '*' {
+                continue;
+            }
+
+            let mut nums = vec![];
+
+            let [tl, t, tr, l, r, bl, b, br] = [
+                grid.get(x - 1, y - 1).unwrap(),
+                grid.get(x, y - 1).unwrap(),
+                grid.get(x + 1, y - 1).unwrap(),
+                grid.get(x - 1, y).unwrap(),
+                grid.get(x + 1, y).unwrap(),
+                grid.get(x - 1, y + 1).unwrap(),
+                grid.get(x, y + 1).unwrap(),
+                grid.get(x + 1, y + 1).unwrap(),
+            ]
+            .map(|c| c.is_ascii_digit());
+
+            // Check top neighbors
+            match [tl, t, tr] {
+                [false, false, false] => {}
+                [true, false, false] => nums.push(parse_num_rtl(x - 1, y - 1)),
+                [false, false, true] => nums.push(parse_num_ltr(x + 1, y - 1)),
+                [true, false, true] => {
+                    nums.push(parse_num_rtl(x - 1, y - 1));
+                    nums.push(parse_num_ltr(x + 1, y - 1));
+                }
+                [_, true, false] => {
+                    nums.push(parse_num_rtl(x, y - 1));
+                }
+                [false, true, true] => nums.push(parse_num_ltr(x, y - 1)),
+                [true, true, true] => {
+                    nums.push(parse_num_ltr(x - 1, y - 1));
+                }
+            }
+
+            // Check left/right neighbors
+            if l {
+                nums.push(parse_num_rtl(x - 1, y));
+            }
+            if r {
+                nums.push(parse_num_ltr(x + 1, y));
+            }
+
+            // Check bottom neighbors
+            match [bl, b, br] {
+                [false, false, false] => {}
+                [true, false, false] => nums.push(parse_num_rtl(x - 1, y + 1)),
+                [false, false, true] => nums.push(parse_num_ltr(x + 1, y + 1)),
+                [true, false, true] => {
+                    nums.push(parse_num_rtl(x - 1, y + 1));
+                    nums.push(parse_num_ltr(x + 1, y + 1));
+                }
+                [_, true, false] => {
+                    nums.push(parse_num_rtl(x, y + 1));
+                }
+                [false, true, true] => nums.push(parse_num_ltr(x, y + 1)),
+                [true, true, true] => {
+                    nums.push(parse_num_ltr(x - 1, y + 1));
+                }
+            }
+
+            if nums.len() == 2 {
+                result += nums[0] * nums[1];
+            }
+        }
+    }
+
+    Some(result)
 }
 
 #[cfg(test)]

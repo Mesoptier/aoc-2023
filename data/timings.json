@@ -14,9 +14,9 @@
     },
     {
       "day": "03",
-      "part_1": "32.0µs",
-      "part_2": null,
-      "total_nanos": 32000
+      "part_1": "34.0µs",
+      "part_2": "27.3µs",
+      "total_nanos": 61300
     },
     {
       "day": "04",
