@@ -60,7 +60,6 @@ pub fn part_one(input: &str) -> Option<usize> {
         .map(|seed| {
             let mut current = seed;
             for map in &maps {
-                // TODO: Could be optimized with binary search
                 for entry in map {
                     let MapEntry {
                         source_range_start: src_start,
