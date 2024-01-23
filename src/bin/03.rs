@@ -1,3 +1,4 @@
+use itertools::Itertools;
 advent_of_code::solution!(3);
 
 struct CharGrid<'a> {
@@ -9,18 +10,28 @@ struct CharGrid<'a> {
 
 impl<'a> CharGrid<'a> {
     fn new(data: &'a str) -> Self {
-        // Data must be ASCII and contain CR (not CRLF) line endings
-        debug_assert!(data.is_ascii());
-        debug_assert!(data.find('\r').is_none());
-
         let data = data.as_bytes();
 
-        let width = data.iter().position(|&c| c == b'\n').unwrap();
-        let width_with_nl = width + 1;
+        let (width, line_sep_char) = data
+            .iter()
+            .find_position(|&c| matches!(c, b'\n' | b'\r'))
+            .unwrap();
 
-        let height = data.len() / width_with_nl;
+        let width_with_nl = width
+            + match line_sep_char {
+                b'\n' => 1,
+                b'\r' => 2,
+                _ => unreachable!(),
+            };
 
-        debug_assert_eq!(data.len(), height * width_with_nl);
+        // Note: we allow the last line to not have a newline, hence the ceiling division
+        let height = (data.len() + width_with_nl - 1) / width_with_nl;
+
+        debug_assert!(
+            data.len() == height * width_with_nl
+                || data.len() == height * width_with_nl - width_with_nl + width,
+            "data must be rectangular (with or without trailing newline)"
+        );
 
         Self {
             data,
