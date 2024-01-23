@@ -52,7 +52,7 @@ pub fn part_one(input: &str) -> Option<usize> {
     let (_, (seeds, mut maps)) = parse_input(input).unwrap();
 
     for map in &mut maps {
-        map.sort_by_key(|entry| entry.source_range_start);
+        map.sort_unstable_by_key(|entry| entry.source_range_start);
     }
 
     seeds
@@ -82,13 +82,13 @@ pub fn part_two(input: &str) -> Option<usize> {
     let (_, (seeds, mut maps)) = parse_input(input).unwrap();
 
     for map in &mut maps {
-        map.sort_by_key(|entry| entry.source_range_start);
+        map.sort_unstable_by_key(|entry| entry.source_range_start);
     }
 
     let mut current_ranges = seeds.into_iter().tuples::<(_, _)>().collect_vec();
 
     for map in maps {
-        current_ranges.sort_by_key(|(start, _)| *start);
+        current_ranges.sort_unstable_by_key(|(start, _)| *start);
 
         let mut map_entry_index = 0;
         let mut new_ranges = Vec::new();
