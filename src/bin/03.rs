@@ -1,72 +1,93 @@
-use std::collections::HashMap;
+use advent_of_code::util::coord::{Coord, CoordIndexer};
+use advent_of_code::util::VecTable;
 
 advent_of_code::solution!(3);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct Coord(usize, usize);
-impl Coord {
-    /// Get all (orthogonal and diagonal) neighbors of this coordinate within the given bounds.
-    fn neighbors(&self, bounds: Coord) -> Vec<Coord> {
-        let mut neighbors = Vec::new();
-
-        for i in self.0.saturating_sub(1)..=self.0.saturating_add(1) {
-            for j in self.1.saturating_sub(1)..=self.1.saturating_add(1) {
-                if i == self.0 && j == self.1 {
-                    continue;
-                }
-
-                if i < bounds.0 && j < bounds.1 {
-                    neighbors.push(Coord(i, j));
-                }
+fn parse_input(input: &str) -> VecTable<Coord, char, CoordIndexer> {
+    let mut width = None;
+    let data = input
+        .lines()
+        .flat_map(|line| {
+            if width.is_none() {
+                width = Some(line.len());
+            } else {
+                debug_assert_eq!(width.unwrap(), line.len());
             }
-        }
+            line.chars()
+        })
+        .collect::<Vec<_>>();
+    let width = width.unwrap();
+    let height = data.len() / width;
+    VecTable::from_vec(data, CoordIndexer::new(width, height))
+}
 
-        neighbors
-    }
+fn is_special_char(c: char) -> bool {
+    !c.is_ascii_digit() && c != '.'
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
-    let grid = input
-        .lines()
-        .map(|line| line.chars().collect::<Vec<_>>())
-        .collect::<Vec<_>>();
+    let grid = parse_input(input);
 
     let mut result = 0;
 
-    for i in 0..grid.len() {
-        let mut j = 0;
+    for y in 0..grid.indexer().height {
+        let mut num = 0;
+        let mut is_part_num = false;
 
-        while j < grid[i].len() {
-            let mut number = 0;
-            let mut is_part_number = false;
+        let y_prev = if y > 0 { y - 1 } else { y };
+        let y_next = if y + 1 < grid.indexer().height {
+            y + 1
+        } else {
+            y
+        };
 
-            while let Some(digit) = grid[i][j].to_digit(10) {
-                number = number * 10 + digit;
+        for x in 0..grid.indexer().width {
+            let coord = Coord::new(x, y);
 
-                if !is_part_number {
-                    for Coord(ni, nj) in Coord(i, j).neighbors(Coord(grid.len(), grid[i].len())) {
-                        match grid[ni][nj] {
-                            '0'..='9' | '.' => {}
-                            _ => {
-                                is_part_number = true;
-                                break;
-                            }
+            if let Some(d) = grid.get(&coord).to_digit(10) {
+                // Check left neighbors for special char
+                if !is_part_num && num == 0 && x > 0 {
+                    for ny in y_prev..=y_next {
+                        if is_special_char(*grid.get(&Coord::new(x - 1, ny))) {
+                            is_part_num = true;
+                            break;
+                        }
+                    }
+                }
+                // Check top/bottom neighbors for special char
+                if !is_part_num && y_prev != y && is_special_char(*grid.get(&Coord::new(x, y_prev)))
+                {
+                    is_part_num = true;
+                }
+                if !is_part_num && y_next != y && is_special_char(*grid.get(&Coord::new(x, y_next)))
+                {
+                    is_part_num = true;
+                }
+
+                num = num * 10 + d;
+            } else {
+                // Check right neighbors for special char (note that x has already been incremented)
+                if num != 0 && !is_part_num {
+                    for ny in y_prev..=y_next {
+                        let coord = Coord::new(x, ny);
+                        if is_special_char(*grid.get(&coord)) {
+                            is_part_num = true;
+                            break;
                         }
                     }
                 }
 
-                if j < grid[i].len() - 1 {
-                    j += 1;
-                } else {
-                    break;
+                if is_part_num {
+                    result += num;
+                    is_part_num = false;
                 }
-            }
 
-            if is_part_number {
-                result += number;
+                num = 0;
             }
+        }
 
-            j += 1;
+        if is_part_num {
+            result += num;
         }
     }
 
@@ -74,56 +95,7 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    let grid = input
-        .lines()
-        .map(|line| line.chars().collect::<Vec<_>>())
-        .collect::<Vec<_>>();
-
-    let mut gears = HashMap::<Coord, Vec<u32>>::new();
-
-    for i in 0..grid.len() {
-        let mut j = 0;
-
-        while j < grid[i].len() {
-            let mut number = 0;
-            let mut gear_coord = None;
-
-            while let Some(digit) = grid[i][j].to_digit(10) {
-                number = number * 10 + digit;
-
-                if gear_coord.is_none() {
-                    for Coord(ni, nj) in Coord(i, j).neighbors(Coord(grid.len(), grid[i].len())) {
-                        if grid[ni][nj] == '*' {
-                            gear_coord = Some(Coord(ni, nj));
-                            break;
-                        }
-                    }
-                }
-
-                if j < grid[i].len() - 1 {
-                    j += 1;
-                } else {
-                    break;
-                }
-            }
-
-            if let Some(gear_coord) = gear_coord {
-                gears.entry(gear_coord).or_default().push(number);
-            }
-
-            j += 1;
-        }
-    }
-
-    let mut result = 0;
-
-    for (_coord, numbers) in gears {
-        if numbers.len() == 2 {
-            result += numbers[0] * numbers[1];
-        }
-    }
-
-    Some(result)
+    None
 }
 
 #[cfg(test)]
