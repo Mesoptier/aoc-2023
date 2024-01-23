@@ -1,38 +1,42 @@
 use nom::bytes::complete::tag;
-use nom::character::complete::{digit1, space1};
-use nom::combinator::map_res;
-use nom::multi::separated_list0;
-use nom::sequence::{preceded, separated_pair, tuple};
+use nom::character::complete::{digit1, space0, space1};
+use nom::combinator::{map_res, value};
+use nom::sequence::{terminated, tuple};
 use nom::IResult;
 
 advent_of_code::solution!(4);
 
-fn parse_line(input: &str) -> IResult<&str, (Vec<u32>, Vec<u32>)> {
-    preceded(
-        tuple((tag("Card"), space1, digit1, tag(":"), space1)),
-        separated_pair(
-            parse_number_list,
-            tuple((space1, tag("|"), space1)),
-            parse_number_list,
-        ),
-    )(input)
+fn parse_prefix(input: &str) -> IResult<&str, ()> {
+    value((), tuple((tag("Card"), space1, digit1, tag(":"), space1)))(input)
 }
 
-fn parse_number_list(input: &str) -> IResult<&str, Vec<u32>> {
-    separated_list0(space1, map_res(digit1, str::parse))(input)
+fn parse_number(input: &str) -> IResult<&str, u32> {
+    terminated(map_res(digit1, str::parse), space0)(input)
+}
+
+fn parse_separator(input: &str) -> IResult<&str, ()> {
+    value((), tuple((tag("|"), space1)))(input)
 }
 
 fn iter_wins(input: &str) -> impl Iterator<Item = u32> + '_ {
     input.lines().map(|line| {
-        let (_, (winning_numbers, numbers)) = parse_line(line).unwrap();
+        // Parse "Card #: " prefix
+        let (mut line, _) = parse_prefix(line).unwrap();
 
+        // Parse winning numbers, and store them in a mask
         let mut winning_mask = [false; 100];
-        for number in winning_numbers {
+        while let Ok((next_line, number)) = parse_number(line) {
+            line = next_line;
             winning_mask[number as usize] = true;
         }
 
+        // Parse "| " separator
+        let (mut line, _) = parse_separator(line).unwrap();
+
+        // Parse card numbers, and count the number of wins
         let mut result = 0u32;
-        for number in numbers {
+        while let Ok((next_line, number)) = parse_number(line) {
+            line = next_line;
             if winning_mask[number as usize] {
                 result += 1;
             }
