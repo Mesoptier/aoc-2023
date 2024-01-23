@@ -1,72 +1,120 @@
-use std::collections::HashMap;
-
+use itertools::Itertools;
 advent_of_code::solution!(3);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct Coord(usize, usize);
-impl Coord {
-    /// Get all (orthogonal and diagonal) neighbors of this coordinate within the given bounds.
-    fn neighbors(&self, bounds: Coord) -> Vec<Coord> {
-        let mut neighbors = Vec::new();
+struct CharGrid<'a> {
+    data: &'a [u8],
+    width: usize,
+    width_with_nl: usize,
+    height: usize,
+}
 
-        for i in self.0.saturating_sub(1)..=self.0.saturating_add(1) {
-            for j in self.1.saturating_sub(1)..=self.1.saturating_add(1) {
-                if i == self.0 && j == self.1 {
-                    continue;
-                }
+impl<'a> CharGrid<'a> {
+    fn new(data: &'a str) -> Self {
+        let data = data.as_bytes();
 
-                if i < bounds.0 && j < bounds.1 {
-                    neighbors.push(Coord(i, j));
-                }
-            }
+        let (width, line_sep_char) = data
+            .iter()
+            .find_position(|&c| matches!(c, b'\n' | b'\r'))
+            .unwrap();
+
+        let width_with_nl = width
+            + match line_sep_char {
+                b'\n' => 1,
+                b'\r' => 2,
+                _ => unreachable!(),
+            };
+
+        // Note: we allow the last line to not have a newline, hence the ceiling division
+        let height = (data.len() + width_with_nl - 1) / width_with_nl;
+
+        debug_assert!(
+            data.len() == height * width_with_nl
+                || data.len() == height * width_with_nl - width_with_nl + width,
+            "data must be rectangular (with or without trailing newline)"
+        );
+
+        Self {
+            data,
+            width,
+            width_with_nl,
+            height,
         }
+    }
 
-        neighbors
+    fn get(&self, x: usize, y: usize) -> Option<char> {
+        if x >= self.width || y >= self.height {
+            None
+        } else {
+            Some(unsafe {
+                // SAFETY: coord is within bounds
+                self.get_unchecked(x, y)
+            })
+        }
+    }
+
+    unsafe fn get_unchecked(&self, x: usize, y: usize) -> char {
+        *self.data.get_unchecked(y * self.width_with_nl + x) as char
     }
 }
 
+fn is_special_char(c: char) -> bool {
+    !c.is_ascii_digit() && c != '.'
+}
+
 pub fn part_one(input: &str) -> Option<u32> {
-    let grid = input
-        .lines()
-        .map(|line| line.chars().collect::<Vec<_>>())
-        .collect::<Vec<_>>();
+    let grid = CharGrid::new(input);
 
     let mut result = 0;
 
-    for i in 0..grid.len() {
-        let mut j = 0;
+    for y in 0..grid.height {
+        let mut num = 0;
+        let mut is_part_num = false;
 
-        while j < grid[i].len() {
-            let mut number = 0;
-            let mut is_part_number = false;
+        let y_prev = if y > 0 { y - 1 } else { y };
+        let y_next = if y + 1 < grid.height { y + 1 } else { y };
 
-            while let Some(digit) = grid[i][j].to_digit(10) {
-                number = number * 10 + digit;
+        for x in 0..grid.width {
+            if let Some(d) = grid.get(x, y).unwrap().to_digit(10) {
+                // Check left neighbors for special char
+                if !is_part_num && num == 0 && x > 0 {
+                    for ny in y_prev..=y_next {
+                        if is_special_char(grid.get(x - 1, ny).unwrap()) {
+                            is_part_num = true;
+                            break;
+                        }
+                    }
+                }
+                // Check top/bottom neighbors for special char
+                if !is_part_num && y_prev != y && is_special_char(grid.get(x, y_prev).unwrap()) {
+                    is_part_num = true;
+                }
+                if !is_part_num && y_next != y && is_special_char(grid.get(x, y_next).unwrap()) {
+                    is_part_num = true;
+                }
 
-                if !is_part_number {
-                    for Coord(ni, nj) in Coord(i, j).neighbors(Coord(grid.len(), grid[i].len())) {
-                        match grid[ni][nj] {
-                            '0'..='9' | '.' => {}
-                            _ => {
-                                is_part_number = true;
-                                break;
-                            }
+                num = num * 10 + d;
+            } else {
+                // Check right neighbors for special char (note that x has already been incremented)
+                if num != 0 && !is_part_num {
+                    for ny in y_prev..=y_next {
+                        if is_special_char(grid.get(x, ny).unwrap()) {
+                            is_part_num = true;
+                            break;
                         }
                     }
                 }
 
-                if j < grid[i].len() - 1 {
-                    j += 1;
-                } else {
-                    break;
+                if is_part_num {
+                    result += num;
+                    is_part_num = false;
                 }
-            }
 
-            if is_part_number {
-                result += number;
+                num = 0;
             }
+        }
 
-            j += 1;
+        if is_part_num {
+            result += num;
         }
     }
 
@@ -74,52 +122,102 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    let grid = input
-        .lines()
-        .map(|line| line.chars().collect::<Vec<_>>())
-        .collect::<Vec<_>>();
+    let grid = CharGrid::new(input);
 
-    let mut gears = HashMap::<Coord, Vec<u32>>::new();
-
-    for i in 0..grid.len() {
-        let mut j = 0;
-
-        while j < grid[i].len() {
-            let mut number = 0;
-            let mut gear_coord = None;
-
-            while let Some(digit) = grid[i][j].to_digit(10) {
-                number = number * 10 + digit;
-
-                if gear_coord.is_none() {
-                    for Coord(ni, nj) in Coord(i, j).neighbors(Coord(grid.len(), grid[i].len())) {
-                        if grid[ni][nj] == '*' {
-                            gear_coord = Some(Coord(ni, nj));
-                            break;
-                        }
-                    }
-                }
-
-                if j < grid[i].len() - 1 {
-                    j += 1;
-                } else {
-                    break;
-                }
+    let parse_num_rtl = |x: usize, y: usize| -> u32 {
+        let mut num = 0;
+        let mut mul = 1;
+        for x in (0..=x).rev() {
+            if let Some(d) = grid.get(x, y).unwrap().to_digit(10) {
+                num += d * mul;
+                mul *= 10;
+            } else {
+                break;
             }
-
-            if let Some(gear_coord) = gear_coord {
-                gears.entry(gear_coord).or_default().push(number);
-            }
-
-            j += 1;
         }
-    }
+        num
+    };
+    let parse_num_ltr = |x: usize, y: usize| -> u32 {
+        let mut num = 0;
+        for x in x..grid.width {
+            if let Some(d) = grid.get(x, y).unwrap().to_digit(10) {
+                num = num * 10 + d;
+            } else {
+                break;
+            }
+        }
+        num
+    };
 
     let mut result = 0;
 
-    for (_coord, numbers) in gears {
-        if numbers.len() == 2 {
-            result += numbers[0] * numbers[1];
+    for y in 1..(grid.height - 1) {
+        for x in 1..(grid.width - 1) {
+            if grid.get(x, y).unwrap() != '*' {
+                continue;
+            }
+
+            let mut nums = vec![];
+
+            let [tl, t, tr, l, r, bl, b, br] = [
+                grid.get(x - 1, y - 1).unwrap(),
+                grid.get(x, y - 1).unwrap(),
+                grid.get(x + 1, y - 1).unwrap(),
+                grid.get(x - 1, y).unwrap(),
+                grid.get(x + 1, y).unwrap(),
+                grid.get(x - 1, y + 1).unwrap(),
+                grid.get(x, y + 1).unwrap(),
+                grid.get(x + 1, y + 1).unwrap(),
+            ]
+            .map(|c| c.is_ascii_digit());
+
+            // Check top neighbors
+            match [tl, t, tr] {
+                [false, false, false] => {}
+                [true, false, false] => nums.push(parse_num_rtl(x - 1, y - 1)),
+                [false, false, true] => nums.push(parse_num_ltr(x + 1, y - 1)),
+                [true, false, true] => {
+                    nums.push(parse_num_rtl(x - 1, y - 1));
+                    nums.push(parse_num_ltr(x + 1, y - 1));
+                }
+                [_, true, false] => {
+                    nums.push(parse_num_rtl(x, y - 1));
+                }
+                [false, true, true] => nums.push(parse_num_ltr(x, y - 1)),
+                [true, true, true] => {
+                    nums.push(parse_num_ltr(x - 1, y - 1));
+                }
+            }
+
+            // Check left/right neighbors
+            if l {
+                nums.push(parse_num_rtl(x - 1, y));
+            }
+            if r {
+                nums.push(parse_num_ltr(x + 1, y));
+            }
+
+            // Check bottom neighbors
+            match [bl, b, br] {
+                [false, false, false] => {}
+                [true, false, false] => nums.push(parse_num_rtl(x - 1, y + 1)),
+                [false, false, true] => nums.push(parse_num_ltr(x + 1, y + 1)),
+                [true, false, true] => {
+                    nums.push(parse_num_rtl(x - 1, y + 1));
+                    nums.push(parse_num_ltr(x + 1, y + 1));
+                }
+                [_, true, false] => {
+                    nums.push(parse_num_rtl(x, y + 1));
+                }
+                [false, true, true] => nums.push(parse_num_ltr(x, y + 1)),
+                [true, true, true] => {
+                    nums.push(parse_num_ltr(x - 1, y + 1));
+                }
+            }
+
+            if nums.len() == 2 {
+                result += nums[0] * nums[1];
+            }
         }
     }
 
