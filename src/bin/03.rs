@@ -78,7 +78,7 @@ pub fn part_one(input: &str) -> Option<u32> {
                 // Check left neighbors for special char
                 if !is_part_num && num == 0 && x > 0 {
                     for ny in y_prev..=y_next {
-                        if is_special_char(grid.get(x - 1, y).unwrap()) {
+                        if is_special_char(grid.get(x - 1, ny).unwrap()) {
                             is_part_num = true;
                             break;
                         }
