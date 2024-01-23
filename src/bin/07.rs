@@ -74,7 +74,7 @@ impl Hand {
     fn new(cards: [Card; 5], j_card_type: JCardType) -> Self {
         let sorted_cards = {
             let mut cards = cards;
-            cards.sort();
+            cards.sort_unstable();
             cards
         };
 
@@ -160,7 +160,7 @@ fn solve(input: &str, j_card_type: JCardType) -> Option<u32> {
         })
         .collect::<Vec<_>>();
 
-    hands.sort();
+    hands.sort_unstable();
 
     hands
         .into_iter()
