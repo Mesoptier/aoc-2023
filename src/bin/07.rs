@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use itertools::Itertools;
 
 advent_of_code::solution!(7);
@@ -11,7 +9,7 @@ enum JCardType {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
-struct Card(u8);
+struct Card(u32);
 
 impl Card {
     fn new(c: char, j_card_type: JCardType) -> Self {
@@ -52,11 +50,22 @@ enum HandType {
     HighCard,
 }
 
-#[derive(Eq, PartialEq, Debug)]
-struct Hand {
-    cards: [Card; 5],
-    hand_type: HandType,
+impl HandType {
+    fn value(&self) -> u32 {
+        match self {
+            HandType::FiveOfAKind => 6,
+            HandType::FourOfAKind => 5,
+            HandType::FullHouse => 4,
+            HandType::ThreeOfAKind => 3,
+            HandType::TwoPairs => 2,
+            HandType::OnePair => 1,
+            HandType::HighCard => 0,
+        }
+    }
 }
+
+#[derive(Eq, PartialEq, Debug, Ord, PartialOrd)]
+struct Hand(u32);
 
 impl Hand {
     fn new(cards: [Card; 5], j_card_type: JCardType) -> Self {
@@ -114,22 +123,18 @@ impl Hand {
             }
         };
 
-        Self { cards, hand_type }
-    }
-}
+        let mut repr = 0;
 
-impl PartialOrd<Self> for Hand {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
+        // 4 bits for hand type
+        repr |= hand_type.value();
 
-impl Ord for Hand {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.hand_type
-            .cmp(&other.hand_type)
-            .reverse()
-            .then(self.cards.cmp(&other.cards))
+        // 4 bits per card = 20 bits
+        for card in cards {
+            repr <<= 4;
+            repr |= card.0;
+        }
+
+        Self(repr)
     }
 }
 
