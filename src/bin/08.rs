@@ -39,52 +39,72 @@ fn parse_input(input: &str) -> IResult<&str, (Vec<Instruction>, Vec<(&str, (&str
     )(input)
 }
 
-pub fn part_one(input: &str) -> Option<u32> {
-    let (_, (instructions, map)) = parse_input(input).ok()?;
+fn solve(input: &str, part_two: bool) -> Option<usize> {
+    let (_, (instructions, map)) = parse_input(input).unwrap();
 
-    let map = HashMap::<&str, (&str, &str)>::from_iter(map);
-    let mut node = "AAA";
-    let mut steps = 0;
+    let (map, starting_nodes, target_node_mask) = {
+        let node_to_index = map
+            .iter()
+            .enumerate()
+            .map(|(i, (node, _))| (*node, i as u32))
+            .collect::<HashMap<&str, u32>>();
 
-    for instruction in instructions.iter().cycle() {
-        node = match (instruction, map.get(node).unwrap()) {
-            (Instruction::Left, (left, _)) => left,
-            (Instruction::Right, (_, right)) => right,
-        };
-        steps += 1;
+        let mut starting_nodes = vec![];
+        let mut target_node_mask = vec![false; map.len()];
+        let map = map
+            .iter()
+            .map(|(node, (left, right))| {
+                if match part_two {
+                    false => *node == "AAA",
+                    true => node.ends_with('A'),
+                } {
+                    starting_nodes.push(node_to_index[node]);
+                }
+                if match part_two {
+                    false => *node == "ZZZ",
+                    true => node.ends_with('Z'),
+                } {
+                    target_node_mask[node_to_index[node] as usize] = true;
+                }
 
-        if node == "ZZZ" {
-            return Some(steps);
-        }
-    }
+                let left = node_to_index[left];
+                let right = node_to_index[right];
+                (left, right)
+            })
+            .collect::<Vec<_>>();
 
-    unreachable!()
+        (map, starting_nodes, target_node_mask)
+    };
+
+    starting_nodes
+        .into_iter()
+        .map(|starting_node| {
+            let mut node = starting_node;
+            let mut steps = 0;
+
+            for instruction in instructions.iter().cycle() {
+                node = match (instruction, map[node as usize]) {
+                    (Instruction::Left, (left, _)) => left,
+                    (Instruction::Right, (_, right)) => right,
+                };
+                steps += 1;
+
+                if target_node_mask[node as usize] {
+                    return steps;
+                }
+            }
+
+            unreachable!()
+        })
+        .reduce(lcm)
+}
+
+pub fn part_one(input: &str) -> Option<usize> {
+    solve(input, false)
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
-    let (_, (instructions, map)) = parse_input(input).ok()?;
-
-    let map = HashMap::<&str, (&str, &str)>::from_iter(map);
-    let nodes = map.keys().filter(|s| s.ends_with('A'));
-    let steps = nodes.map(|node| {
-        let mut node = node;
-        let mut steps = 0;
-
-        for instruction in instructions.iter().cycle() {
-            node = match (instruction, map.get(node).unwrap()) {
-                (Instruction::Left, (left, _)) => left,
-                (Instruction::Right, (_, right)) => right,
-            };
-            steps += 1;
-
-            if node.ends_with('Z') {
-                return steps;
-            }
-        }
-
-        unreachable!()
-    });
-    steps.reduce(lcm)
+    solve(input, true)
 }
 
 #[cfg(test)]
