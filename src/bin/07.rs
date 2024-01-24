@@ -11,7 +11,7 @@ enum JCardType {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
-struct Card(u32);
+struct Card(u8);
 
 impl Card {
     fn new(c: char, j_card_type: JCardType) -> Self {
