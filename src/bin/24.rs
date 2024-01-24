@@ -4,7 +4,6 @@ use nom::combinator::{map, map_res};
 use nom::multi::separated_list1;
 use nom::sequence::{delimited, separated_pair, tuple};
 use nom::IResult;
-use std::fmt::Write;
 
 advent_of_code::solution!(24);
 
@@ -97,40 +96,145 @@ pub fn part_one(input: &str) -> Option<usize> {
     solve_part_one(input, 200_000_000_000_000., 400_000_000_000_000.)
 }
 
+fn gaussian_elimination<const N: usize, const M: usize>(mut matrix: [[f64; M]; N]) -> [f64; N] {
+    // TODO: Integer version of this algorithm
+
+    for i in 0..N {
+        // Find pivot for column i
+        let mut pivot_row = i;
+        for j in i + 1..N {
+            if matrix[j][i].abs() > matrix[pivot_row][i].abs() {
+                pivot_row = j;
+            }
+        }
+
+        // Swap rows i and pivot_row
+        matrix.swap(i, pivot_row);
+
+        // Eliminate column i for rows i+1..N
+        for j in i + 1..N {
+            let factor = matrix[j][i] / matrix[i][i];
+            for k in i..M {
+                matrix[j][k] -= factor * matrix[i][k];
+            }
+        }
+    }
+
+    // Back substitution
+    let mut x = [0.; N];
+    for i in (0..N).rev() {
+        x[i] = matrix[i][N];
+        for j in i + 1..N {
+            x[i] -= matrix[i][j] * x[j];
+        }
+        x[i] /= matrix[i][i];
+    }
+
+    x
+}
+
 pub fn part_two(input: &str) -> Option<usize> {
     let (_, hailstones) = parse_input(input).unwrap();
 
     // Find (pos, vel) such that for every (pos_i, vel_i) in hailstones there exists a t_i such that:
     // pos + vel * t_i = pos_i + vel_i * t_i
 
-    for dc in ['x', 'y', 'z'] {
-        println!("(declare-const pos_{} Int)", dc);
-        println!("(declare-const vel_{} Int)", dc);
-    }
+    // Rewrite as:
+    // pos - pos_i = -t_i * (vel - vel_i))
 
-    hailstones
-        .into_iter()
-        .enumerate()
-        .for_each(|(i, (pos, vel))| {
-            println!("(declare-const t_{} Int)", i);
+    // Since t_i is a scalar, the two vectors are parallel:
+    // (pos - pos_i) x (vel - vel_i) = 0
 
-            for (di, dc) in ['x', 'y', 'z'].into_iter().enumerate() {
-                println!(
-                    "(assert (= (+ pos_{} (* vel_{} t_{})) (+ {} (* {} t_{}))))",
-                    dc, dc, i, pos[di], vel[di], i
-                );
-            }
-        });
+    // Rewrite to get 3 equations for the scalar components of the cross product
+    // (pos.y - pos_i.y) * (vel.z - vel_i.z) - (pos.z - pos_i.z) * (vel.y - vel_i.y) = 0
+    // (pos.z - pos_i.z) * (vel.x - vel_i.x) - (pos.x - pos_i.x) * (vel.z - vel_i.z) = 0
+    // (pos.x - pos_i.x) * (vel.y - vel_i.y) - (pos.y - pos_i.y) * (vel.x - vel_i.x) = 0
 
-    println!("(declare-const result Int)");
-    println!("(assert (= result (+ pos_x pos_y pos_z)))");
-    println!("(check-sat)");
-    println!("(get-value result)");
+    // Equate first equation for i = 0 and i = 1:
+    // (pos.y - pos_0.y) * (vel.z - vel_0.z) - (pos.z - pos_0.z) * (vel.y - vel_0.y) = (pos.y - pos_1.y) * (vel.z - vel_1.z) - (pos.z - pos_1.z) * (vel.y - vel_1.y)
+    //
+    // Expand:
+    // pos.y * vel.z - pos.y * vel_0.z - pos_0.y * vel.z + pos_0.y * vel_0.z - pos.z * vel.y + pos.z * vel_0.y + pos_0.z * vel.y - pos_0.z * vel_0.y
+    // = pos.y * vel.z - pos.y * vel_1.z - pos_1.y * vel.z + pos_1.y * vel_1.z - pos.z * vel.y + pos.z * vel_1.y + pos_1.z * vel.y - pos_1.z * vel_1.y
+    //
+    // Rewrite to simplified linear equation in terms of pos and vel:
+    // pos.y * -(vel_0.z - vel_1.z) + vel.z * -(pos_0.y - pos_1.y) + pos.z * (vel_0.y - vel_1.y) + vel.y * (pos_0.z - pos_1.z)
+    // = - pos_0.y * vel_0.z + pos_1.y * vel_1.z - pos_1.z * vel_1.y + pos_0.z * vel_0.y
 
-    println!();
-    println!("Run the above SMT-LIB2 code through an SMT solver (e.g. Z3) to get the result");
+    // Do the same for all three equations for i set to both (0, 1) and (0, 2), and solve the resulting system of linear
+    // equations. Note that we have 6 equations and 6 unknowns, so we can use Gaussian elimination to solve the system.
 
-    None
+    let p0 = hailstones[0].0;
+    let v0 = hailstones[0].1;
+    let p1 = hailstones[1].0;
+    let v1 = hailstones[1].1;
+    let p2 = hailstones[2].0;
+    let v2 = hailstones[2].1;
+
+    // Augmented matrix containing coefficients of: pos.x, pos.y, pos.z, vel.x, vel.y, vel.z, constant
+    let matrix = [
+        [
+            0.,
+            -(v0[2] - v1[2]),
+            v0[1] - v1[1],
+            0.,
+            p0[2] - p1[2],
+            -(p0[1] - p1[1]),
+            -p0[1] * v0[2] + p1[1] * v1[2] - p1[2] * v1[1] + p0[2] * v0[1],
+        ],
+        [
+            v0[2] - v1[2],
+            0.,
+            -(v0[0] - v1[0]),
+            -(p0[2] - p1[2]),
+            0.,
+            p0[0] - p1[0],
+            -p0[2] * v0[0] + p1[2] * v1[0] - p1[0] * v1[2] + p0[0] * v0[2],
+        ],
+        [
+            -(v0[1] - v1[1]),
+            v0[0] - v1[0],
+            0.,
+            p0[1] - p1[1],
+            -(p0[0] - p1[0]),
+            0.,
+            -p0[0] * v0[1] + p1[0] * v1[1] - p1[1] * v1[0] + p0[1] * v0[0],
+        ],
+        [
+            0.,
+            -(v0[2] - v2[2]),
+            v0[1] - v2[1],
+            0.,
+            p0[2] - p2[2],
+            -(p0[1] - p2[1]),
+            -p0[1] * v0[2] + p2[1] * v2[2] - p2[2] * v2[1] + p0[2] * v0[1],
+        ],
+        [
+            v0[2] - v2[2],
+            0.,
+            -(v0[0] - v2[0]),
+            -(p0[2] - p2[2]),
+            0.,
+            p0[0] - p2[0],
+            -p0[2] * v0[0] + p2[2] * v2[0] - p2[0] * v2[2] + p0[0] * v0[2],
+        ],
+        [
+            -(v0[1] - v2[1]),
+            v0[0] - v2[0],
+            0.,
+            p0[1] - p2[1],
+            -(p0[0] - p2[0]),
+            0.,
+            -p0[0] * v0[1] + p2[0] * v2[1] - p2[1] * v2[0] + p0[1] * v0[0],
+        ],
+    ];
+
+    let result = gaussian_elimination(matrix);
+    let x = result[0].round() as usize;
+    let y = result[1].round() as usize;
+    let z = result[2].round() as usize;
+
+    Some(x + y + z)
 }
 
 #[cfg(test)]
@@ -150,6 +254,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(47));
     }
 }

@@ -140,9 +140,9 @@
     },
     {
       "day": "24",
-      "part_1": "488.3µs",
-      "part_2": null,
-      "total_nanos": 488300
+      "part_1": "984.3µs",
+      "part_2": "51.8µs",
+      "total_nanos": 1036100
     },
     {
       "day": "25",
