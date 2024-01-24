@@ -1,20 +1,8 @@
 use std::cmp::Ordering;
 
 use itertools::Itertools;
-use nom::character::complete::{alphanumeric1, digit1, line_ending, space1};
-use nom::combinator::map_res;
-use nom::multi::separated_list1;
-use nom::sequence::separated_pair;
-use nom::IResult;
 
 advent_of_code::solution!(7);
-
-fn parse_input(input: &str) -> IResult<&str, Vec<(&str, u32)>> {
-    separated_list1(
-        line_ending,
-        separated_pair(alphanumeric1, space1, map_res(digit1, str::parse)),
-    )(input)
-}
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum JCardType {
@@ -145,17 +133,19 @@ impl Ord for Hand {
     }
 }
 
+fn parse_input_iter(input: &str) -> impl Iterator<Item = ([char; 5], u32)> + '_ {
+    input.lines().map(|line| {
+        let cards: [u8; 5] = line.as_bytes()[..5].try_into().unwrap();
+        let cards = cards.map(|c| c as char);
+        let bid = line[6..].parse().unwrap();
+        (cards, bid)
+    })
+}
+
 fn solve(input: &str, j_card_type: JCardType) -> Option<u32> {
-    let (_, input) = parse_input(input).unwrap();
-    let mut hands = input
-        .into_iter()
-        .map(|(hand, bid)| {
-            let cards = hand
-                .chars()
-                .map(|c| Card::new(c, j_card_type))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
+    let mut hands = parse_input_iter(input)
+        .map(|(cards, bid)| {
+            let cards = cards.map(|c| Card::new(c, j_card_type));
             (Hand::new(cards, j_card_type), bid)
         })
         .collect::<Vec<_>>();
