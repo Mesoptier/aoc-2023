@@ -1,17 +1,17 @@
-use itertools::Itertools;
+use nalgebra::{Matrix2, Vector2};
 use nom::character::complete::{char, i64, line_ending, space1};
 use nom::combinator::{map, map_res};
 use nom::multi::separated_list1;
 use nom::sequence::{delimited, separated_pair, tuple};
 use nom::IResult;
+use num::Zero;
+use simba::simd::{
+    SimdBool, SimdComplexField, SimdPartialOrd, SimdValue, WideBoolF64x4, WideF64x4,
+};
 
 advent_of_code::solution!(24);
 
-type Vec3 = [f64; 3];
-type Vec2 = [f64; 2];
-type Mat2 = [[f64; 2]; 2];
-
-fn parse_input(input: &str) -> IResult<&str, Vec<(Vec3, Vec3)>> {
+fn parse_input(input: &str) -> IResult<&str, Vec<([f64; 3], [f64; 3])>> {
     separated_list1(
         line_ending,
         separated_pair(
@@ -22,7 +22,7 @@ fn parse_input(input: &str) -> IResult<&str, Vec<(Vec3, Vec3)>> {
     )(input)
 }
 
-fn parse_vector(input: &str) -> IResult<&str, Vec3> {
+fn parse_vector(input: &str) -> IResult<&str, [f64; 3]> {
     map_res(
         separated_list1(tuple((char(','), space1)), map(i64, |i| i as f64)),
         |v| v.try_into(),
@@ -32,63 +32,103 @@ fn parse_vector(input: &str) -> IResult<&str, Vec3> {
 fn solve_part_one(input: &str, min_pos: f64, max_pos: f64) -> Option<usize> {
     let (_, hailstones) = parse_input(input).unwrap();
 
+    let min_pos = WideF64x4::splat(min_pos);
+    let max_pos = WideF64x4::splat(max_pos);
+
     hailstones
-        .into_iter()
-        .tuple_combinations()
-        .filter(|(a, b)| a != b)
-        .filter(|(a, b)| {
-            let (a_pos, a_vel) = *a;
-            let (b_pos, b_vel) = *b;
+        .chunks(4)
+        .enumerate()
+        .map(|(chunk_index, chunk)| {
+            let (a_pos, a_vel) = {
+                let mut a_pos_x = [0.; 4];
+                let mut a_pos_y = [0.; 4];
+                let mut a_vel_x = [0.; 4];
+                let mut a_vel_y = [0.; 4];
 
-            // Find position c_pos where the trajectories cross (only in the x and y dimensions)
-            // (1) c_pos.xy = a_pos.xy + a_vel.xy * t
-            // (2) c_pos.xy = b_pos.xy + b_vel.xy * u
+                for (i, (a_pos, a_vel)) in chunk.iter().enumerate() {
+                    a_pos_x[i] = a_pos[0];
+                    a_pos_y[i] = a_pos[1];
+                    a_vel_x[i] = a_vel[0];
+                    a_vel_y[i] = a_vel[1];
+                }
 
-            // Set equations (1) and (2) equal to each other:
-            // a_pos.xy + a_vel.xy * t = b_pos.xy + b_vel.xy * u
+                (
+                    Vector2::new(WideF64x4::from(a_pos_x), WideF64x4::from(a_pos_y)),
+                    Vector2::new(WideF64x4::from(a_vel_x), WideF64x4::from(a_vel_y)),
+                )
+            };
 
-            // Represent as a matrix multiplication equation:
-            // | a_vel.x, -b_vel.x | | t | = | b_pos.x - a_pos.x |
-            // | a_vel.y, -b_vel.y | | u |   | b_pos.y - a_pos.y |
+            hailstones
+                .iter()
+                .skip(chunk_index * 4 + 1)
+                .copied()
+                .enumerate()
+                .map(move |(i, (b_pos, b_vel))| {
+                    let ignore_mask = WideBoolF64x4::from([false, i < 1, i < 2, i < 3]);
 
-            // Solve for t and u:
-            // | t | = | a_vel.x, -b_vel.x |^-1 | b_pos.x - a_pos.x |
-            // | u |   | a_vel.y, -b_vel.y |    | b_pos.y - a_pos.y |
+                    let b_pos =
+                        Vector2::new(WideF64x4::splat(b_pos[0]), WideF64x4::splat(b_pos[1]));
+                    let b_vel =
+                        Vector2::new(WideF64x4::splat(b_vel[0]), WideF64x4::splat(b_vel[1]));
 
-            let matrix: Mat2 = [[a_vel[0], -b_vel[0]], [a_vel[1], -b_vel[1]]];
+                    // Find position c_pos where the trajectories cross (only in the x and y dimensions)
+                    // (1) c_pos.xy = a_pos.xy + a_vel.xy * t
+                    // (2) c_pos.xy = b_pos.xy + b_vel.xy * u
 
-            let det = matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
-            // TODO: Add epsilon?
-            if det == 0. {
-                return false;
-            }
+                    // Set equations (1) and (2) equal to each other:
+                    // a_pos.xy + a_vel.xy * t = b_pos.xy + b_vel.xy * u
 
-            let inv_det = 1. / det;
-            let inv_matrix: Mat2 = [
-                [matrix[1][1] * inv_det, -matrix[0][1] * inv_det],
-                [-matrix[1][0] * inv_det, matrix[0][0] * inv_det],
-            ];
+                    // Represent as a matrix multiplication equation:
+                    // | a_vel.x, -b_vel.x | | t | = | b_pos.x - a_pos.x |
+                    // | a_vel.y, -b_vel.y | | u |   | b_pos.y - a_pos.y |
 
-            let diff: Vec2 = [b_pos[0] - a_pos[0], b_pos[1] - a_pos[1]];
+                    // Solve for t and u:
+                    // | t | = | a_vel.x, -b_vel.x |^-1 | b_pos.x - a_pos.x |
+                    // | u |   | a_vel.y, -b_vel.y |    | b_pos.y - a_pos.y |
 
-            let [t, u]: Vec2 = [
-                inv_matrix[0][0] * diff[0] + inv_matrix[0][1] * diff[1],
-                inv_matrix[1][0] * diff[0] + inv_matrix[1][1] * diff[1],
-            ];
+                    let matrix = Matrix2::new(a_vel[0], -b_vel[0], a_vel[1], -b_vel[1]);
 
-            if t < 0. || u < 0. {
-                return false;
-            }
+                    // Cannot use matrix.determinant() because it is not implemented for SimdRealField
+                    let det = matrix[(0, 0)] * matrix[(1, 1)] - matrix[(0, 1)] * matrix[(1, 0)];
 
-            let c_pos: Vec3 = [
-                a_pos[0] + a_vel[0] * t,
-                a_pos[1] + a_vel[1] * t,
-                a_pos[2] + a_vel[2] * t,
-            ];
+                    let ignore_mask = ignore_mask | det.simd_eq(WideF64x4::zero());
+                    if ignore_mask.all() {
+                        return 0;
+                    }
 
-            min_pos <= c_pos[0] && c_pos[0] <= max_pos && min_pos <= c_pos[1] && c_pos[1] <= max_pos
+                    let inv_det = det.simd_recip();
+                    let inv_matrix = Matrix2::new(
+                        matrix[(1, 1)] * inv_det,
+                        -matrix[(0, 1)] * inv_det,
+                        -matrix[(1, 0)] * inv_det,
+                        matrix[(0, 0)] * inv_det,
+                    );
+
+                    let diff = b_pos - a_pos;
+
+                    let [t, u] = [
+                        inv_matrix[(0, 0)] * diff[0] + inv_matrix[(0, 1)] * diff[1],
+                        inv_matrix[(1, 0)] * diff[0] + inv_matrix[(1, 1)] * diff[1],
+                    ];
+
+                    let ignore_mask =
+                        ignore_mask | t.simd_le(WideF64x4::zero()) | u.simd_le(WideF64x4::zero());
+                    if ignore_mask.all() {
+                        return 0;
+                    }
+
+                    let c_pos = a_pos + a_vel * t;
+                    let ignore_mask = ignore_mask
+                        | c_pos[0].simd_lt(min_pos)
+                        | c_pos[0].simd_gt(max_pos)
+                        | c_pos[1].simd_lt(min_pos)
+                        | c_pos[1].simd_gt(max_pos);
+
+                    (0..4).filter(|&i| !ignore_mask.extract(i)).count()
+                })
+                .sum::<usize>()
         })
-        .count()
+        .sum::<usize>()
         .into()
 }
 
