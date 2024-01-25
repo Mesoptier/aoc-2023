@@ -31,18 +31,16 @@ fn parse_vector(input: &str) -> IResult<&str, [f64; 3]> {
 }
 
 type Scalar = f64;
-type PackedScalar = f64x4;
-type PackedBool = mask64x4;
 const LANES: usize = 4;
 
 fn solve_part_one(input: &str, min_pos: Scalar, max_pos: Scalar) -> Option<usize> {
     let (_, hailstones) = parse_input(input).unwrap();
 
-    let min_pos = PackedScalar::splat(min_pos);
-    let max_pos = PackedScalar::splat(max_pos);
+    let min_pos = Simd::splat(min_pos);
+    let max_pos = Simd::splat(max_pos);
 
     hailstones
-        .chunks(4)
+        .chunks(LANES)
         .enumerate()
         .map(|(chunk_index, chunk)| {
             let (a_pos, a_vel) = {
@@ -59,14 +57,8 @@ fn solve_part_one(input: &str, min_pos: Scalar, max_pos: Scalar) -> Option<usize
                 }
 
                 (
-                    Vector2::new(
-                        PackedScalar::from_array(a_pos_x),
-                        PackedScalar::from_array(a_pos_y),
-                    ),
-                    Vector2::new(
-                        PackedScalar::from_array(a_vel_x),
-                        PackedScalar::from_array(a_vel_y),
-                    ),
+                    Vector2::new(Simd::from_array(a_pos_x), Simd::from_array(a_pos_y)),
+                    Vector2::new(Simd::from_array(a_vel_x), Simd::from_array(a_vel_y)),
                 )
             };
 
@@ -78,9 +70,9 @@ fn solve_part_one(input: &str, min_pos: Scalar, max_pos: Scalar) -> Option<usize
                 .map(move |(i, (b_pos, b_vel))| {
                     let ignore_mask = if i + 1 < LANES {
                         // Ignore all hailstones (= a) with a greater or equal index than the current one (= b)
-                        PackedBool::from_bitmask(u64::MAX << (i + 1))
+                        Mask::from_bitmask(u64::MAX << (i + 1))
                     } else {
-                        PackedBool::splat(false)
+                        Mask::splat(false)
                     };
 
                     let b_pos = Vector2::new(Simd::splat(b_pos[0]), Simd::splat(b_pos[1]));
@@ -126,8 +118,8 @@ fn solve_part_one(input: &str, min_pos: Scalar, max_pos: Scalar) -> Option<usize
 
                     // Ignore hailstones whose trajectories cross in the past
                     let ignore_mask = ignore_mask
-                        | t.simd_le(PackedScalar::splat(Scalar::zero()))
-                        | u.simd_le(PackedScalar::splat(Scalar::zero()));
+                        | t.simd_le(Simd::splat(Scalar::zero()))
+                        | u.simd_le(Simd::splat(Scalar::zero()));
 
                     let c_pos = a_pos + a_vel * t;
 
