@@ -3,7 +3,7 @@
 use std::simd::prelude::*;
 
 use nalgebra::{Matrix2, Vector2};
-use nom::character::complete::{char, i64, line_ending, space1};
+use nom::character::complete::{char, i64, space1};
 use nom::combinator::{map, map_res};
 use nom::multi::separated_list1;
 use nom::sequence::{delimited, separated_pair, tuple};
@@ -12,15 +12,16 @@ use num::Zero;
 
 advent_of_code::solution!(24);
 
-fn parse_input(input: &str) -> IResult<&str, Vec<([f64; 3], [f64; 3])>> {
-    separated_list1(
-        line_ending,
+fn parse_input_iter(input: &str) -> impl Iterator<Item = ([f64; 3], [f64; 3])> + '_ {
+    input.lines().map(|line| {
         separated_pair(
             parse_vector,
             delimited(space1, char('@'), space1),
             parse_vector,
-        ),
-    )(input)
+        )(line)
+        .unwrap()
+        .1
+    })
 }
 
 fn parse_vector(input: &str) -> IResult<&str, [f64; 3]> {
@@ -34,7 +35,7 @@ type Scalar = f64;
 const LANES: usize = 8;
 
 fn solve_part_one(input: &str, min_pos: Scalar, max_pos: Scalar) -> Option<usize> {
-    let (_, hailstones) = parse_input(input).unwrap();
+    let hailstones = parse_input_iter(input).collect::<Vec<_>>();
 
     let min_pos = Simd::splat(min_pos);
     let max_pos = Simd::splat(max_pos);
@@ -181,7 +182,7 @@ fn gaussian_elimination<const N: usize, const M: usize>(mut matrix: [[f64; M]; N
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
-    let (_, hailstones) = parse_input(input).unwrap();
+    let hailstones = parse_input_iter(input).take(3).collect::<Vec<_>>();
 
     // Find (pos, vel) such that for every (pos_i, vel_i) in hailstones there exists a t_i such that:
     // pos + vel * t_i = pos_i + vel_i * t_i
