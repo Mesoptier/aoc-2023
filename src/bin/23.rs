@@ -55,7 +55,7 @@ impl BitSet {
 }
 
 struct Cache {
-    cache: VecTable<NodeIndex, HashMap<BitSet, u32>, LinearIndexer<NodeIndex>>,
+    cache: VecTable<NodeIndex, HashMap<u32, u32>, LinearIndexer<NodeIndex>>,
 }
 
 impl Cache {
@@ -66,11 +66,27 @@ impl Cache {
     }
 
     fn get(&self, node: NodeIndex, reachable: BitSet) -> Option<u32> {
-        self.cache[node].get(&reachable).copied()
+        self.cache[node]
+            .get(&Cache::reachable_cache_key(reachable))
+            .copied()
     }
 
     fn insert(&mut self, node: NodeIndex, reachable: BitSet, steps: u32) {
-        self.cache[node].insert(reachable, steps);
+        self.cache[node].insert(Cache::reachable_cache_key(reachable), steps);
+    }
+
+    fn reachable_cache_key(reachable: BitSet) -> u32 {
+        // There are 36 nodes in the graph.
+        //
+        // Consider the nodes at each index:
+        //  0 -> start node, always taken
+        //  1 -> first trail node after start, always taken
+        //  2..34 -> trail nodes
+        //  34 -> last trail node before target, always taken
+        //  35 -> target node, always taken
+        //
+        // So we can discard the first two bits and the last two bits, leaving 32 bits for the reachable set.
+        (reachable.0 >> 2) as u32
     }
 }
 
