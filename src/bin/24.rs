@@ -1,3 +1,7 @@
+#![feature(portable_simd)]
+
+use std::simd::prelude::*;
+
 use nalgebra::{Matrix2, Vector2};
 use nom::character::complete::{char, i64, line_ending, space1};
 use nom::combinator::{map, map_res};
@@ -5,9 +9,6 @@ use nom::multi::separated_list1;
 use nom::sequence::{delimited, separated_pair, tuple};
 use nom::IResult;
 use num::Zero;
-use simba::simd::{
-    SimdBool, SimdComplexField, SimdPartialOrd, SimdValue, WideBoolF64x4, WideF64x4,
-};
 
 advent_of_code::solution!(24);
 
@@ -29,21 +30,25 @@ fn parse_vector(input: &str) -> IResult<&str, [f64; 3]> {
     )(input)
 }
 
-fn solve_part_one(input: &str, min_pos: f64, max_pos: f64) -> Option<usize> {
+type Scalar = f64;
+type PackedScalar = f64x4;
+const LANES: usize = 4;
+
+fn solve_part_one(input: &str, min_pos: Scalar, max_pos: Scalar) -> Option<usize> {
     let (_, hailstones) = parse_input(input).unwrap();
 
-    let min_pos = WideF64x4::splat(min_pos);
-    let max_pos = WideF64x4::splat(max_pos);
+    let min_pos = PackedScalar::splat(min_pos);
+    let max_pos = PackedScalar::splat(max_pos);
 
     hailstones
         .chunks(4)
         .enumerate()
         .map(|(chunk_index, chunk)| {
             let (a_pos, a_vel) = {
-                let mut a_pos_x = [0.; 4];
-                let mut a_pos_y = [0.; 4];
-                let mut a_vel_x = [0.; 4];
-                let mut a_vel_y = [0.; 4];
+                let mut a_pos_x = [Scalar::zero(); LANES];
+                let mut a_pos_y = [Scalar::zero(); LANES];
+                let mut a_vel_x = [Scalar::zero(); LANES];
+                let mut a_vel_y = [Scalar::zero(); LANES];
 
                 for (i, (a_pos, a_vel)) in chunk.iter().enumerate() {
                     a_pos_x[i] = a_pos[0];
@@ -53,8 +58,14 @@ fn solve_part_one(input: &str, min_pos: f64, max_pos: f64) -> Option<usize> {
                 }
 
                 (
-                    Vector2::new(WideF64x4::from(a_pos_x), WideF64x4::from(a_pos_y)),
-                    Vector2::new(WideF64x4::from(a_vel_x), WideF64x4::from(a_vel_y)),
+                    Vector2::new(
+                        PackedScalar::from_array(a_pos_x),
+                        PackedScalar::from_array(a_pos_y),
+                    ),
+                    Vector2::new(
+                        PackedScalar::from_array(a_vel_x),
+                        PackedScalar::from_array(a_vel_y),
+                    ),
                 )
             };
 
@@ -64,12 +75,10 @@ fn solve_part_one(input: &str, min_pos: f64, max_pos: f64) -> Option<usize> {
                 .copied()
                 .enumerate()
                 .map(move |(i, (b_pos, b_vel))| {
-                    let ignore_mask = WideBoolF64x4::from([false, i < 1, i < 2, i < 3]);
+                    let ignore_mask = mask64x4::from([false, i < 1, i < 2, i < 3]);
 
-                    let b_pos =
-                        Vector2::new(WideF64x4::splat(b_pos[0]), WideF64x4::splat(b_pos[1]));
-                    let b_vel =
-                        Vector2::new(WideF64x4::splat(b_vel[0]), WideF64x4::splat(b_vel[1]));
+                    let b_pos = Vector2::new(Simd::splat(b_pos[0]), Simd::splat(b_pos[1]));
+                    let b_vel = Vector2::new(Simd::splat(b_vel[0]), Simd::splat(b_vel[1]));
 
                     // Find position c_pos where the trajectories cross (only in the x and y dimensions)
                     // (1) c_pos.xy = a_pos.xy + a_vel.xy * t
@@ -91,9 +100,9 @@ fn solve_part_one(input: &str, min_pos: f64, max_pos: f64) -> Option<usize> {
                     // Cannot use matrix.determinant() because it is not implemented for SimdRealField
                     let det = matrix[(0, 0)] * matrix[(1, 1)] - matrix[(0, 1)] * matrix[(1, 0)];
 
-                    let ignore_mask = ignore_mask | det.simd_eq(WideF64x4::zero());
+                    let ignore_mask = ignore_mask | det.simd_eq(Simd::splat(Scalar::zero()));
 
-                    let inv_det = det.simd_recip();
+                    let inv_det = det.recip();
                     let inv_matrix = Matrix2::new(
                         matrix[(1, 1)] * inv_det,
                         -matrix[(0, 1)] * inv_det,
@@ -108,8 +117,9 @@ fn solve_part_one(input: &str, min_pos: f64, max_pos: f64) -> Option<usize> {
                         inv_matrix[(1, 0)] * diff[0] + inv_matrix[(1, 1)] * diff[1],
                     ];
 
-                    let ignore_mask =
-                        ignore_mask | t.simd_le(WideF64x4::zero()) | u.simd_le(WideF64x4::zero());
+                    let ignore_mask = ignore_mask
+                        | t.simd_le(PackedScalar::splat(Scalar::zero()))
+                        | u.simd_le(PackedScalar::splat(Scalar::zero()));
 
                     let c_pos = a_pos + a_vel * t;
                     let ignore_mask = ignore_mask
@@ -118,7 +128,7 @@ fn solve_part_one(input: &str, min_pos: f64, max_pos: f64) -> Option<usize> {
                         | c_pos[1].simd_lt(min_pos)
                         | c_pos[1].simd_gt(max_pos);
 
-                    (0..4).filter(|&i| !ignore_mask.extract(i)).count()
+                    (0..4).filter(|&i| !ignore_mask.test(i)).count()
                 })
                 .sum::<usize>()
         })
