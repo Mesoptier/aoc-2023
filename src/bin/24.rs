@@ -92,9 +92,6 @@ fn solve_part_one(input: &str, min_pos: f64, max_pos: f64) -> Option<usize> {
                     let det = matrix[(0, 0)] * matrix[(1, 1)] - matrix[(0, 1)] * matrix[(1, 0)];
 
                     let ignore_mask = ignore_mask | det.simd_eq(WideF64x4::zero());
-                    if ignore_mask.all() {
-                        return 0;
-                    }
 
                     let inv_det = det.simd_recip();
                     let inv_matrix = Matrix2::new(
@@ -113,9 +110,6 @@ fn solve_part_one(input: &str, min_pos: f64, max_pos: f64) -> Option<usize> {
 
                     let ignore_mask =
                         ignore_mask | t.simd_le(WideF64x4::zero()) | u.simd_le(WideF64x4::zero());
-                    if ignore_mask.all() {
-                        return 0;
-                    }
 
                     let c_pos = a_pos + a_vel * t;
                     let ignore_mask = ignore_mask
