@@ -32,6 +32,7 @@ fn parse_vector(input: &str) -> IResult<&str, [f64; 3]> {
 
 type Scalar = f64;
 type PackedScalar = f64x4;
+type PackedBool = mask64x4;
 const LANES: usize = 4;
 
 fn solve_part_one(input: &str, min_pos: Scalar, max_pos: Scalar) -> Option<usize> {
@@ -71,11 +72,16 @@ fn solve_part_one(input: &str, min_pos: Scalar, max_pos: Scalar) -> Option<usize
 
             hailstones
                 .iter()
-                .skip(chunk_index * 4 + 1)
+                .skip(chunk_index * LANES + 1)
                 .copied()
                 .enumerate()
                 .map(move |(i, (b_pos, b_vel))| {
-                    let ignore_mask = mask64x4::from([false, i < 1, i < 2, i < 3]);
+                    let ignore_mask = if i + 1 < LANES {
+                        // Ignore all hailstones (= a) with a greater or equal index than the current one (= b)
+                        PackedBool::from_bitmask(u64::MAX << (i + 1))
+                    } else {
+                        PackedBool::splat(false)
+                    };
 
                     let b_pos = Vector2::new(Simd::splat(b_pos[0]), Simd::splat(b_pos[1]));
                     let b_vel = Vector2::new(Simd::splat(b_vel[0]), Simd::splat(b_vel[1]));
@@ -100,6 +106,7 @@ fn solve_part_one(input: &str, min_pos: Scalar, max_pos: Scalar) -> Option<usize
                     // Cannot use matrix.determinant() because it is not implemented for SimdRealField
                     let det = matrix[(0, 0)] * matrix[(1, 1)] - matrix[(0, 1)] * matrix[(1, 0)];
 
+                    // Ignore hailstones that are moving parallel to each other
                     let ignore_mask = ignore_mask | det.simd_eq(Simd::splat(Scalar::zero()));
 
                     let inv_det = det.recip();
@@ -117,18 +124,22 @@ fn solve_part_one(input: &str, min_pos: Scalar, max_pos: Scalar) -> Option<usize
                         inv_matrix[(1, 0)] * diff[0] + inv_matrix[(1, 1)] * diff[1],
                     ];
 
+                    // Ignore hailstones whose trajectories cross in the past
                     let ignore_mask = ignore_mask
                         | t.simd_le(PackedScalar::splat(Scalar::zero()))
                         | u.simd_le(PackedScalar::splat(Scalar::zero()));
 
                     let c_pos = a_pos + a_vel * t;
+
+                    // Ignore hailstones whose trajectories cross outside the given bounds
                     let ignore_mask = ignore_mask
                         | c_pos[0].simd_lt(min_pos)
                         | c_pos[0].simd_gt(max_pos)
                         | c_pos[1].simd_lt(min_pos)
                         | c_pos[1].simd_gt(max_pos);
 
-                    (0..4).filter(|&i| !ignore_mask.test(i)).count()
+                    // Count the number of hailstones that are not ignored
+                    (0..LANES).filter(|&i| !ignore_mask.test(i)).count()
                 })
                 .sum::<usize>()
         })
