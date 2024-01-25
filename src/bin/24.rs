@@ -3,10 +3,10 @@
 use std::simd::prelude::*;
 
 use nalgebra::{Matrix2, Vector2};
+use nom::bytes::complete::tag;
 use nom::character::complete::{char, i64, space1};
-use nom::combinator::{map, map_res};
-use nom::multi::separated_list1;
-use nom::sequence::{delimited, separated_pair, tuple};
+use nom::combinator::map;
+use nom::sequence::{delimited, preceded, separated_pair, tuple};
 use nom::IResult;
 use num::Zero;
 
@@ -25,10 +25,18 @@ fn parse_input_iter(input: &str) -> impl Iterator<Item = ([f64; 3], [f64; 3])> +
 }
 
 fn parse_vector(input: &str) -> IResult<&str, [f64; 3]> {
-    map_res(
-        separated_list1(tuple((char(','), space1)), map(i64, |i| i as f64)),
-        |v| v.try_into(),
+    map(
+        tuple((
+            parse_scalar,
+            preceded(tag(", "), parse_scalar),
+            preceded(tag(", "), parse_scalar),
+        )),
+        |(x, y, z)| [x, y, z],
     )(input)
+}
+
+fn parse_scalar(input: &str) -> IResult<&str, f64> {
+    map(i64, |i| i as f64)(input)
 }
 
 type Scalar = f64;
