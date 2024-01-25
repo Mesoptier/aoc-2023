@@ -207,11 +207,60 @@ fn gather_trails(
     )
 }
 
+/// Writes the trails map to a file for debugging with Graphviz.
+fn write_trails_map_to_file(
+    trails_map: &TrailsMap,
+    start_node: NodeIndex,
+    target_node: NodeIndex,
+    filename: &str,
+) {
+    use std::io::Write;
+
+    let mut file = std::fs::File::create(filename).unwrap();
+    writeln!(file, "digraph {{").unwrap();
+    for (from_node, trails) in trails_map.iter() {
+        if from_node == start_node {
+            writeln!(
+                file,
+                "  {} [label=\"{} (start)\", color=green]",
+                from_node, from_node
+            )
+            .unwrap();
+        } else if from_node == target_node {
+            writeln!(
+                file,
+                "  {} [label=\"{} (target)\", color=red]",
+                from_node, from_node
+            )
+            .unwrap();
+        } else {
+            writeln!(file, "  {} [label=\"{}\"]", from_node, from_node).unwrap();
+        }
+
+        for &(to_node, steps) in trails {
+            writeln!(file, "  {} -> {} [label=\"{}\"]", from_node, to_node, steps).unwrap();
+        }
+    }
+    writeln!(file, "}}").unwrap();
+}
+
 fn solve(input: &str, part_two: bool) -> Option<u32> {
     let (grid, start_coord, target_coord) = parse_input(input);
 
     let (mut trails_map, start_node, target_node) =
         gather_trails(grid, start_coord, target_coord, part_two);
+
+    // Uncomment to write the trails map to a file for debugging with Graphviz
+    // write_trails_map_to_file(
+    //     &trails_map,
+    //     start_node,
+    //     target_node,
+    //     if !part_two {
+    //         "data/viz/23-1.dot"
+    //     } else {
+    //         "data/viz/23-2.dot"
+    //     },
+    // );
 
     for trails in trails_map.values_mut() {
         // Sort the trails by length, so DFS considers the longest trails first. (Note the list is sorted in increasing
