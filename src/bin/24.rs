@@ -31,7 +31,7 @@ fn parse_vector(input: &str) -> IResult<&str, [f64; 3]> {
 }
 
 type Scalar = f64;
-const LANES: usize = 4;
+const LANES: usize = 8;
 
 fn solve_part_one(input: &str, min_pos: Scalar, max_pos: Scalar) -> Option<usize> {
     let (_, hailstones) = parse_input(input).unwrap();
