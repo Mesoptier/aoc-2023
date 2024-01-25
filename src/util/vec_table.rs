@@ -1,4 +1,5 @@
 use crate::util::indexer::Indexer;
+use crate::util::KeyFor;
 use std::borrow::{Borrow, BorrowMut};
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
@@ -79,6 +80,20 @@ where
     /// Returns an iterator over the values in the table.
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.data.borrow().iter()
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = K> + '_
+    where
+        I: KeyFor<K>,
+    {
+        self.indexer.iter()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (K, &V)>
+    where
+        I: KeyFor<K>,
+    {
+        self.keys().zip(self.values())
     }
 
     pub fn view<J: Indexer<K>>(&self, indexer: J) -> VecTable<K, V, J, &[V]> {
