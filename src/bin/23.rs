@@ -52,6 +52,10 @@ impl BitSet {
         debug_assert!(index < 32);
         self.0 |= 1 << index;
     }
+
+    fn intersects(&self, other: &Self) -> bool {
+        (self.0 & other.0) != 0
+    }
 }
 
 struct Cache {
@@ -423,7 +427,32 @@ fn solve(input: &str, part_two: bool, example: bool) -> Option<u32> {
         stack.push((next_node, next_steps, BitSet::new()));
     }
 
-    let mut inner_stack = Vec::with_capacity(36);
+    let neighbor_masks = trails_map
+        .iter()
+        .take(32)
+        .map(|(_, neighbors)| {
+            BitSet(
+                neighbors
+                    .iter()
+                    .filter(|(neighbor, _)| *neighbor < 32)
+                    .map(|(neighbor, _)| 1 << *neighbor)
+                    .fold(0, |a, b| a | b),
+            )
+        })
+        .chain(std::iter::once(BitSet::new())) // target node
+        .collect::<Vec<_>>();
+
+    let before_target_mask = BitSet(
+        trails_map
+            .iter()
+            .filter(|(_, neighbors)| {
+                neighbors
+                    .iter()
+                    .any(|(neighbor, _)| *neighbor == target_node)
+            })
+            .map(|(node, _)| 1 << node)
+            .fold(0, |a, b| a | b),
+    );
 
     while let Some((node, steps, mut visited)) = stack.pop() {
         if node == target_node {
@@ -435,32 +464,31 @@ fn solve(input: &str, part_two: bool, example: bool) -> Option<u32> {
             continue;
         }
 
-        visited.set(node);
-
         // Compute the set of nodes reachable from this node
         let (reachable, is_target_node_reachable) = {
             let mut reachable = BitSet::new();
-            let mut is_target_node_reachable = false;
+            reachable.set(node);
 
-            inner_stack.clear();
-            inner_stack.push(node);
+            loop {
+                let mut next_reachable = reachable;
 
-            while let Some(node) = inner_stack.pop() {
-                reachable.set(node);
-
-                for &(next_node, _) in &trails_map[node] {
-                    if next_node == target_node {
-                        is_target_node_reachable = true;
-                        continue;
+                for i in 0..neighbor_masks.len() {
+                    if reachable.get(i as u32) {
+                        next_reachable.0 |= neighbor_masks[i].0;
                     }
-                    if visited.get(next_node) || reachable.get(next_node) {
-                        continue;
-                    }
-                    inner_stack.push(next_node);
                 }
+
+                // Can't re-visit nodes that have already been visited
+                next_reachable.0 &= !visited.0;
+
+                if next_reachable == reachable {
+                    break;
+                }
+
+                reachable = next_reachable;
             }
 
-            (reachable, is_target_node_reachable)
+            (reachable, reachable.intersects(&before_target_mask))
         };
 
         // Prune the path if we can't reach the target node from this node
@@ -474,6 +502,8 @@ fn solve(input: &str, part_two: bool, example: bool) -> Option<u32> {
             Some(cached_steps) if cached_steps >= steps => continue,
             _ => cache.insert(node, reachable, steps),
         };
+
+        visited.set(node);
 
         for &(next_node, next_steps) in &trails_map[node] {
             stack.push((next_node, steps + next_steps, visited));
