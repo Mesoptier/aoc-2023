@@ -368,6 +368,73 @@ fn write_trails_map_to_file(
     writeln!(file, "}}").unwrap();
 }
 
+struct ComputeReachable {
+    neighbor_masks: Vec<BitSet>,
+    before_target_mask: BitSet,
+}
+
+impl ComputeReachable {
+    fn new(trails_map: &TrailsMap, target_node: NodeIndex) -> Self {
+        let neighbor_masks = trails_map
+            .iter()
+            .take(32)
+            .map(|(_, neighbors)| {
+                BitSet(
+                    neighbors
+                        .iter()
+                        .filter(|(neighbor, _)| *neighbor < 32)
+                        .map(|(neighbor, _)| 1 << *neighbor)
+                        .fold(0, |a, b| a | b),
+                )
+            })
+            .chain(std::iter::once(BitSet::new())) // target node
+            .collect::<Vec<_>>();
+
+        let before_target_mask = BitSet(
+            trails_map
+                .iter()
+                .filter(|(_, neighbors)| {
+                    neighbors
+                        .iter()
+                        .any(|(neighbor, _)| *neighbor == target_node)
+                })
+                .map(|(node, _)| 1 << node)
+                .fold(0, |a, b| a | b),
+        );
+
+        ComputeReachable {
+            neighbor_masks,
+            before_target_mask,
+        }
+    }
+
+    fn compute_reachable(&self, node: NodeIndex, visited: &BitSet) -> (BitSet, bool) {
+        let mut reachable = BitSet::new();
+        reachable.set(node);
+
+        loop {
+            let mut next_reachable = reachable;
+
+            for i in 0..self.neighbor_masks.len() {
+                if reachable.get(i as u32) {
+                    next_reachable.0 |= self.neighbor_masks[i].0;
+                }
+            }
+
+            // Can't re-visit nodes that have already been visited
+            next_reachable.0 &= !visited.0;
+
+            if next_reachable == reachable {
+                break;
+            }
+
+            reachable = next_reachable;
+        }
+
+        (reachable, reachable.intersects(&self.before_target_mask))
+    }
+}
+
 fn solve(input: &str, part_two: bool, example: bool) -> Option<u32> {
     let debug = false;
 
@@ -414,6 +481,7 @@ fn solve(input: &str, part_two: bool, example: bool) -> Option<u32> {
     let mut max_steps = 0;
 
     let mut cache = Cache::new(*trails_map.indexer());
+    let compute_reachable = ComputeReachable::new(&trails_map, target_node);
 
     // A note on 32-bit bitsets:
     // - Part one: There are fewer than 32 nodes, so we can use the first 32 bits of the bitset as a cache key.
@@ -427,33 +495,6 @@ fn solve(input: &str, part_two: bool, example: bool) -> Option<u32> {
         stack.push((next_node, next_steps, BitSet::new()));
     }
 
-    let neighbor_masks = trails_map
-        .iter()
-        .take(32)
-        .map(|(_, neighbors)| {
-            BitSet(
-                neighbors
-                    .iter()
-                    .filter(|(neighbor, _)| *neighbor < 32)
-                    .map(|(neighbor, _)| 1 << *neighbor)
-                    .fold(0, |a, b| a | b),
-            )
-        })
-        .chain(std::iter::once(BitSet::new())) // target node
-        .collect::<Vec<_>>();
-
-    let before_target_mask = BitSet(
-        trails_map
-            .iter()
-            .filter(|(_, neighbors)| {
-                neighbors
-                    .iter()
-                    .any(|(neighbor, _)| *neighbor == target_node)
-            })
-            .map(|(node, _)| 1 << node)
-            .fold(0, |a, b| a | b),
-    );
-
     while let Some((node, steps, mut visited)) = stack.pop() {
         if node == target_node {
             max_steps = max_steps.max(steps);
@@ -465,31 +506,8 @@ fn solve(input: &str, part_two: bool, example: bool) -> Option<u32> {
         }
 
         // Compute the set of nodes reachable from this node
-        let (reachable, is_target_node_reachable) = {
-            let mut reachable = BitSet::new();
-            reachable.set(node);
-
-            loop {
-                let mut next_reachable = reachable;
-
-                for i in 0..neighbor_masks.len() {
-                    if reachable.get(i as u32) {
-                        next_reachable.0 |= neighbor_masks[i].0;
-                    }
-                }
-
-                // Can't re-visit nodes that have already been visited
-                next_reachable.0 &= !visited.0;
-
-                if next_reachable == reachable {
-                    break;
-                }
-
-                reachable = next_reachable;
-            }
-
-            (reachable, reachable.intersects(&before_target_mask))
-        };
+        let (reachable, is_target_node_reachable) =
+            compute_reachable.compute_reachable(node, &visited);
 
         // Prune the path if we can't reach the target node from this node
         if !is_target_node_reachable {
