@@ -36,7 +36,7 @@ impl TryFrom<char> for Tile {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, Ord, PartialOrd)]
-struct BitSet(u64);
+struct BitSet(u32);
 
 impl BitSet {
     fn new() -> Self {
@@ -44,12 +44,12 @@ impl BitSet {
     }
 
     fn get(&self, index: u32) -> bool {
-        debug_assert!(index < 64);
+        debug_assert!(index < 32);
         (self.0 & (1 << index)) != 0
     }
 
     fn set(&mut self, index: u32) {
-        debug_assert!(index < 64);
+        debug_assert!(index < 32);
         self.0 |= 1 << index;
     }
 }
@@ -66,24 +66,11 @@ impl Cache {
     }
 
     fn get(&self, node: NodeIndex, reachable: BitSet) -> Option<u32> {
-        self.cache[node]
-            .get(&Cache::reachable_cache_key(reachable))
-            .copied()
+        self.cache[node].get(&reachable.0).copied()
     }
 
     fn insert(&mut self, node: NodeIndex, reachable: BitSet, steps: u32) {
-        self.cache[node].insert(Cache::reachable_cache_key(reachable), steps);
-    }
-
-    fn reachable_cache_key(reachable: BitSet) -> u32 {
-        // PART ONE:
-        // There are fewer than 32 nodes, so we can use the first 32 bits of the bitset as a cache key.
-        //
-        // PART TWO:
-        // Node 33 is the start node and is never reachable.
-        // Node 32 is the target node and is always reachable.
-        // Nodes 0..=31 are trail nodes, so we can use the first 32 bits of the bitset as a cache key.
-        reachable.0 as u32
+        self.cache[node].insert(reachable.0, steps);
     }
 }
 
@@ -424,7 +411,17 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
 
     let mut cache = Cache::new(*trails_map.indexer());
 
-    stack.push((start_node, 0, BitSet::new()));
+    // A note on 32-bit bitsets:
+    // - Part one: There are fewer than 32 nodes, so we can use the first 32 bits of the bitset as a cache key.
+    // - Part two:
+    //      - Node 33 is the start node and is always visited and never reachable.
+    //      - Node 32 is the target node and is never visited and always reachable (otherwise we'd prune the path).
+    //      - Remaining nodes 0..=31 are trail nodes, so we can use the first 32 bits of the bitset as a cache key.
+
+    // Cannot push start node to stack here, because its index is out of bounds for the bitsets.
+    for &(next_node, next_steps) in &trails_map[start_node] {
+        stack.push((next_node, next_steps, BitSet::new()));
+    }
 
     let mut inner_queue = VecDeque::with_capacity(36);
 
@@ -441,8 +438,10 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
         visited.set(node);
 
         // Compute the set of nodes reachable from this node
-        let reachable = {
+        let (reachable, is_target_node_reachable) = {
             let mut reachable = BitSet::new();
+            let mut is_target_node_reachable = false;
+
             inner_queue.clear();
             inner_queue.push_back(node);
 
@@ -450,6 +449,10 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
                 reachable.set(node);
 
                 for &(next_node, _) in &trails_map[node] {
+                    if next_node == target_node {
+                        is_target_node_reachable = true;
+                        continue;
+                    }
                     if visited.get(next_node) || reachable.get(next_node) {
                         continue;
                     }
@@ -457,11 +460,11 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
                 }
             }
 
-            reachable
+            (reachable, is_target_node_reachable)
         };
 
         // Prune the path if we can't reach the target node from this node
-        if !reachable.get(target_node) {
+        if !is_target_node_reachable {
             continue;
         }
 
