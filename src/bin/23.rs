@@ -3,7 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use arrayvec::ArrayVec;
 
 use advent_of_code::util::coord::Direction;
-use advent_of_code::util::{LinearIndexer, VecMap, VecSet, VecTable};
+use advent_of_code::util::{Indexer, LinearIndexer, VecMap, VecSet, VecTable};
 
 advent_of_code::solution!(23);
 
@@ -76,17 +76,14 @@ impl Cache {
     }
 
     fn reachable_cache_key(reachable: BitSet) -> u32 {
-        // There are 36 nodes in the graph.
+        // PART ONE:
+        // There are fewer than 32 nodes, so we can use the first 32 bits of the bitset as a cache key.
         //
-        // Consider the nodes at each index:
-        //  0 -> start node, always taken
-        //  1 -> first trail node after start, always taken
-        //  2..34 -> trail nodes
-        //  34 -> last trail node before target, always taken
-        //  35 -> target node, always taken
-        //
-        // So we can discard the first two bits and the last two bits, leaving 32 bits for the reachable set.
-        (reachable.0 >> 2) as u32
+        // PART TWO:
+        // Node 33 is the start node and is never reachable.
+        // Node 32 is the target node and is always reachable.
+        // Nodes 0..=31 are trail nodes, so we can use the first 32 bits of the bitset as a cache key.
+        reachable.0 as u32
     }
 }
 
@@ -223,6 +220,126 @@ fn gather_trails(
     )
 }
 
+/// Optimizes trails map for part two.
+///
+/// Produces a graph that looks as follows:
+/// ```text
+///     X … X → T
+///   ⁄ |   |   ↑
+/// X — X … X — X
+/// ⋮   ⋮   ⋮   ⋮
+/// X — X … X — X
+/// ↑   |   | ⁄
+/// S → X … X
+/// ```
+/// Where `S = 32` is the start node, `T = 33` is the target node, and `X = 0..=31` are trail nodes.
+/// The start node has no incoming edges, and the target node has no outgoing edges. All other edges are bidirectional.
+fn optimize_trails_map(
+    trails_map: TrailsMap,
+    start_node: NodeIndex,
+    target_node: NodeIndex,
+) -> (TrailsMap, NodeIndex, NodeIndex) {
+    debug_assert_eq!(trails_map.indexer().len(), 36);
+    debug_assert_eq!(trails_map[start_node].len(), 1);
+    debug_assert_eq!(trails_map[target_node].len(), 0);
+
+    let mut trails_data = trails_map.to_vec();
+
+    fn merge_node(
+        trails_data: &mut [ArrayVec<(NodeIndex, CoordT), 4>],
+        node: NodeIndex,
+    ) -> NodeIndex {
+        // Find neighbor that has an edge to this node
+        let (neighbor, steps) = trails_data
+            .iter()
+            .enumerate()
+            .find_map(|(index, neighbors)| {
+                neighbors
+                    .iter()
+                    .find(|(neighbor, _)| *neighbor == node)
+                    .map(|(_, steps)| (index as NodeIndex, *steps))
+            })
+            .unwrap();
+
+        // Remove this node from data
+        trails_data[node as usize].clear();
+
+        // Remove edge from neighbor to this node
+        trails_data[neighbor as usize].retain(|(neighbor, _)| *neighbor != node);
+
+        // Update cost of edges from neighbor to other nodes
+        for (_, other_steps) in &mut trails_data[neighbor as usize] {
+            *other_steps += steps;
+        }
+        // Update cost of edges from other nodes to neighbor
+        for other_neighbors in trails_data.iter_mut() {
+            for (other_node, other_steps) in other_neighbors {
+                if *other_node == neighbor {
+                    *other_steps += steps;
+                }
+            }
+        }
+
+        neighbor
+    }
+
+    fn delete_incoming_edges(
+        trails_data: &mut [ArrayVec<(NodeIndex, CoordT), 4>],
+        node: NodeIndex,
+    ) {
+        // Remove edges from other nodes to this node
+        for neighbors in trails_data.iter_mut() {
+            neighbors.retain(|(neighbor, _)| *neighbor != node);
+        }
+    }
+
+    fn delete_outgoing_edges(
+        trails_data: &mut [ArrayVec<(NodeIndex, CoordT), 4>],
+        node: NodeIndex,
+    ) {
+        // Remove edges from this node to other nodes
+        trails_data[node as usize].clear();
+    }
+
+    let new_start_node = merge_node(&mut trails_data, start_node);
+    delete_incoming_edges(&mut trails_data, new_start_node);
+
+    let new_target_node = merge_node(&mut trails_data, target_node);
+    delete_outgoing_edges(&mut trails_data, new_target_node);
+
+    // Re-index the data so:
+    // - Start and target nodes are at the end of the table
+    // - Trail nodes have indices 0..=31
+    let new_start_node_neighbors = trails_data[new_start_node as usize].clone();
+    let mut new_trails_data = Vec::from_iter(trails_data.into_iter().skip(2).take(32).map(
+        |mut neighbors| {
+            for (neighbor, _) in &mut neighbors {
+                *neighbor -= 2;
+            }
+            neighbors
+        },
+    ));
+
+    let new_target_node = new_trails_data.len() as NodeIndex;
+    new_trails_data.push(ArrayVec::new());
+
+    let new_start_node = new_trails_data.len() as NodeIndex;
+    new_trails_data.push({
+        let mut neighbors = new_start_node_neighbors;
+        for (neighbor, _) in &mut neighbors {
+            *neighbor -= 2;
+        }
+        neighbors
+    });
+
+    let indexer = LinearIndexer::new(new_trails_data.len() as NodeIndex);
+    (
+        TrailsMap::from_vec(new_trails_data, indexer),
+        new_start_node,
+        new_target_node,
+    )
+}
+
 /// Writes the trails map to a file for debugging with Graphviz.
 fn write_trails_map_to_file(
     trails_map: &TrailsMap,
@@ -261,22 +378,40 @@ fn write_trails_map_to_file(
 }
 
 fn solve(input: &str, part_two: bool) -> Option<u32> {
+    let debug = false;
+
     let (grid, start_coord, target_coord) = parse_input(input);
 
-    let (mut trails_map, start_node, target_node) =
+    let (trails_map, start_node, target_node) =
         gather_trails(grid, start_coord, target_coord, part_two);
 
-    // Uncomment to write the trails map to a file for debugging with Graphviz
-    // write_trails_map_to_file(
-    //     &trails_map,
-    //     start_node,
-    //     target_node,
-    //     if !part_two {
-    //         "data/viz/23-1.dot"
-    //     } else {
-    //         "data/viz/23-2.dot"
-    //     },
-    // );
+    if debug {
+        write_trails_map_to_file(
+            &trails_map,
+            start_node,
+            target_node,
+            if !part_two {
+                "data/viz/23-1.dot"
+            } else {
+                "data/viz/23-2.dot"
+            },
+        );
+    }
+
+    let (mut trails_map, start_node, target_node) = if part_two {
+        optimize_trails_map(trails_map, start_node, target_node)
+    } else {
+        (trails_map, start_node, target_node)
+    };
+
+    if debug && part_two {
+        write_trails_map_to_file(
+            &trails_map,
+            start_node,
+            target_node,
+            "data/viz/23-2-opt.dot",
+        );
+    }
 
     for trails in trails_map.values_mut() {
         // Sort the trails by length, so DFS considers the longest trails first. (Note the list is sorted in increasing
