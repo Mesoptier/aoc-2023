@@ -364,7 +364,7 @@ fn write_trails_map_to_file(
     writeln!(file, "}}").unwrap();
 }
 
-fn solve(input: &str, part_two: bool) -> Option<u32> {
+fn solve(input: &str, part_two: bool, example: bool) -> Option<u32> {
     let debug = false;
 
     let (grid, start_coord, target_coord) = parse_input(input);
@@ -372,7 +372,7 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
     let (trails_map, start_node, target_node) =
         gather_trails(grid, start_coord, target_coord, part_two);
 
-    if debug {
+    if debug && !example {
         write_trails_map_to_file(
             &trails_map,
             start_node,
@@ -385,13 +385,13 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
         );
     }
 
-    let (mut trails_map, start_node, target_node) = if part_two {
+    let (mut trails_map, start_node, target_node) = if part_two && !example {
         optimize_trails_map(trails_map, start_node, target_node)
     } else {
         (trails_map, start_node, target_node)
     };
 
-    if debug && part_two {
+    if debug && part_two && !example {
         write_trails_map_to_file(
             &trails_map,
             start_node,
@@ -484,11 +484,11 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
-    solve(input, false)
+    solve(input, false, false)
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    solve(input, true)
+    solve(input, true, false)
 }
 
 #[cfg(test)]
@@ -497,13 +497,21 @@ mod tests {
 
     #[test]
     fn test_part_one() {
-        let result = part_one(&advent_of_code::template::read_file("examples", DAY));
+        let result = solve(
+            &advent_of_code::template::read_file("examples", DAY),
+            false,
+            true,
+        );
         assert_eq!(result, Some(94));
     }
 
     #[test]
     fn test_part_two() {
-        let result = part_two(&advent_of_code::template::read_file("examples", DAY));
+        let result = solve(
+            &advent_of_code::template::read_file("examples", DAY),
+            true,
+            true,
+        );
         assert_eq!(result, Some(154));
     }
 }
