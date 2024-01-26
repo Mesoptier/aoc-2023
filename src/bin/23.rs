@@ -1,4 +1,7 @@
+#![feature(portable_simd)]
+
 use std::collections::{HashMap, VecDeque};
+use std::simd::prelude::*;
 
 use arrayvec::ArrayVec;
 
@@ -51,10 +54,6 @@ impl BitSet {
     fn set(&mut self, index: u32) {
         debug_assert!(index < 32);
         self.0 |= 1 << index;
-    }
-
-    fn intersects(&self, other: &Self) -> bool {
-        (self.0 & other.0) != 0
     }
 }
 
@@ -369,38 +368,36 @@ fn write_trails_map_to_file(
 }
 
 struct ComputeReachable {
-    neighbor_masks: Vec<BitSet>,
-    before_target_mask: BitSet,
+    neighbor_masks: u32x32,
+    before_target_mask: u32,
 }
 
 impl ComputeReachable {
     fn new(trails_map: &TrailsMap, target_node: NodeIndex) -> Self {
-        let neighbor_masks = trails_map
+        let mut neighbor_masks = [0; 32];
+        trails_map
             .iter()
             .take(32)
             .map(|(_, neighbors)| {
-                BitSet(
-                    neighbors
-                        .iter()
-                        .filter(|(neighbor, _)| *neighbor < 32)
-                        .map(|(neighbor, _)| 1 << *neighbor)
-                        .fold(0, |a, b| a | b),
-                )
+                neighbors
+                    .iter()
+                    .filter(|(neighbor, _)| *neighbor < 32)
+                    .map(|(neighbor, _)| 1 << *neighbor)
+                    .fold(0, |a, b| a | b)
             })
-            .chain(std::iter::once(BitSet::new())) // target node
-            .collect::<Vec<_>>();
+            .enumerate()
+            .for_each(|(i, mask)| neighbor_masks[i] = mask);
+        let neighbor_masks = u32x32::from_array(neighbor_masks);
 
-        let before_target_mask = BitSet(
-            trails_map
-                .iter()
-                .filter(|(_, neighbors)| {
-                    neighbors
-                        .iter()
-                        .any(|(neighbor, _)| *neighbor == target_node)
-                })
-                .map(|(node, _)| 1 << node)
-                .fold(0, |a, b| a | b),
-        );
+        let before_target_mask = trails_map
+            .iter()
+            .filter(|(_, neighbors)| {
+                neighbors
+                    .iter()
+                    .any(|(neighbor, _)| *neighbor == target_node)
+            })
+            .map(|(node, _)| 1 << node)
+            .fold(0, |a, b| a | b);
 
         ComputeReachable {
             neighbor_masks,
@@ -409,20 +406,17 @@ impl ComputeReachable {
     }
 
     fn compute_reachable(&self, node: NodeIndex, visited: &BitSet) -> (BitSet, bool) {
-        let mut reachable = BitSet::new();
-        reachable.set(node);
+        let not_visited = !visited.0;
+        let mut reachable = 1 << node;
 
         loop {
-            let mut next_reachable = reachable;
-
-            for i in 0..self.neighbor_masks.len() {
-                if reachable.get(i as u32) {
-                    next_reachable.0 |= self.neighbor_masks[i].0;
-                }
-            }
+            let next_reachable = reachable
+                | mask32x32::from_bitmask(reachable as u64)
+                    .select(self.neighbor_masks, u32x32::splat(0))
+                    .reduce_or();
 
             // Can't re-visit nodes that have already been visited
-            next_reachable.0 &= !visited.0;
+            let next_reachable = next_reachable & not_visited;
 
             if next_reachable == reachable {
                 break;
@@ -431,7 +425,7 @@ impl ComputeReachable {
             reachable = next_reachable;
         }
 
-        (reachable, reachable.intersects(&self.before_target_mask))
+        (BitSet(reachable), reachable & self.before_target_mask != 0)
     }
 }
 
