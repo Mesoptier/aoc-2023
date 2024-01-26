@@ -423,7 +423,7 @@ fn solve(input: &str, part_two: bool, example: bool) -> Option<u32> {
         stack.push((next_node, next_steps, BitSet::new()));
     }
 
-    let mut inner_queue = VecDeque::with_capacity(36);
+    let mut inner_stack = Vec::with_capacity(36);
 
     while let Some((node, steps, mut visited)) = stack.pop() {
         if node == target_node {
@@ -442,10 +442,10 @@ fn solve(input: &str, part_two: bool, example: bool) -> Option<u32> {
             let mut reachable = BitSet::new();
             let mut is_target_node_reachable = false;
 
-            inner_queue.clear();
-            inner_queue.push_back(node);
+            inner_stack.clear();
+            inner_stack.push(node);
 
-            while let Some(node) = inner_queue.pop_front() {
+            while let Some(node) = inner_stack.pop() {
                 reachable.set(node);
 
                 for &(next_node, _) in &trails_map[node] {
@@ -456,7 +456,7 @@ fn solve(input: &str, part_two: bool, example: bool) -> Option<u32> {
                     if visited.get(next_node) || reachable.get(next_node) {
                         continue;
                     }
-                    inner_queue.push_back(next_node);
+                    inner_stack.push(next_node);
                 }
             }
 
