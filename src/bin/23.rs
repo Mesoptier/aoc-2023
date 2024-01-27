@@ -8,6 +8,8 @@ use arrayvec::ArrayVec;
 use advent_of_code::util::coord::Direction;
 use advent_of_code::util::{Indexer, LinearIndexer, VecMap, VecSet, VecTable};
 
+use crate::tile_grid::Tile;
+
 advent_of_code::solution!(23);
 
 type CoordT = u32;
@@ -15,26 +17,214 @@ type Coord = advent_of_code::util::coord::Coord<CoordT>;
 type CoordIndexer = advent_of_code::util::coord::CoordIndexer<CoordT>;
 type Grid = VecTable<Coord, Tile, CoordIndexer>;
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-enum Tile {
-    Path,
-    Forest,
-    Slope(Direction),
+mod tile_grid {
+    use advent_of_code::util::coord::Direction;
+    use advent_of_code::util::CharGrid;
+
+    use crate::{Coord, CoordT};
+
+    #[derive(Copy, Clone, Eq, PartialEq, Debug)]
+    pub enum Tile {
+        Path,
+        Forest,
+        Slope(Direction),
+    }
+
+    impl TryFrom<char> for Tile {
+        type Error = ();
+
+        fn try_from(value: char) -> Result<Self, Self::Error> {
+            match value {
+                '.' => Ok(Tile::Path),
+                '#' => Ok(Tile::Forest),
+                '^' => Ok(Tile::Slope(Direction::Up)),
+                'v' => Ok(Tile::Slope(Direction::Down)),
+                '>' => Ok(Tile::Slope(Direction::Right)),
+                '<' => Ok(Tile::Slope(Direction::Left)),
+                _ => Err(()),
+            }
+        }
+    }
+
+    pub struct TileGrid<'a> {
+        char_grid: CharGrid<'a>,
+    }
+
+    impl<'a> TileGrid<'a> {
+        pub fn new(input: &'a str) -> Self {
+            TileGrid {
+                char_grid: CharGrid::new(input),
+            }
+        }
+
+        pub fn width(&self) -> CoordT {
+            self.char_grid.width() as CoordT
+        }
+
+        pub fn height(&self) -> CoordT {
+            self.char_grid.height() as CoordT
+        }
+
+        pub fn get(&self, coord: Coord) -> Option<Tile> {
+            self.char_grid
+                .get(coord.x as usize, coord.y as usize)
+                .and_then(|c| Tile::try_from(c).ok())
+        }
+    }
 }
 
-impl TryFrom<char> for Tile {
-    type Error = ();
+mod graph {
+    use std::collections::VecDeque;
 
-    fn try_from(value: char) -> Result<Self, Self::Error> {
-        match value {
-            '.' => Ok(Tile::Path),
-            '#' => Ok(Tile::Forest),
-            '^' => Ok(Tile::Slope(Direction::Up)),
-            'v' => Ok(Tile::Slope(Direction::Down)),
-            '>' => Ok(Tile::Slope(Direction::Right)),
-            '<' => Ok(Tile::Slope(Direction::Left)),
-            _ => Err(()),
+    use arrayvec::ArrayVec;
+    use petgraph::graphmap::DiGraphMap;
+
+    use advent_of_code::util::coord::Direction;
+
+    use crate::tile_grid::{Tile, TileGrid};
+    use crate::Coord;
+
+    pub type Cost = u32;
+
+    pub fn build_graph(
+        tile_grid: TileGrid,
+        start_coord: Coord,
+        target_coord: Coord,
+        part_two: bool,
+    ) -> DiGraphMap<Coord, Cost> {
+        let mut graph = DiGraphMap::<Coord, Cost>::new();
+        let mut queue = VecDeque::new();
+
+        queue.push_back((start_coord, Direction::Down));
+
+        while let Some((from_coord, direction)) = queue.pop_front() {
+            let mut coord = from_coord.step_unchecked(direction);
+            let mut prev_direction = direction;
+            let mut cost = 1;
+
+            // Follow path until we reach a node (intersection or target coord)
+            let to_coord = loop {
+                if coord == target_coord {
+                    break coord;
+                }
+
+                let neighbors = [
+                    Direction::Up,
+                    Direction::Down,
+                    Direction::Right,
+                    Direction::Left,
+                ]
+                .into_iter()
+                .filter(|direction| {
+                    // Don't backtrack
+                    *direction != prev_direction.opposite()
+                })
+                .filter_map(|direction| {
+                    let next_coord = coord.step_unchecked(direction);
+                    match tile_grid.get(next_coord) {
+                        Some(Tile::Path) => Some((next_coord, direction)),
+                        Some(Tile::Slope(slope_direction))
+                            if slope_direction == direction || part_two =>
+                        {
+                            Some((next_coord, direction))
+                        }
+                        _ => None,
+                    }
+                })
+                .collect::<ArrayVec<_, 4>>();
+
+                match neighbors.len() {
+                    0 => unreachable!("Invalid trail"),
+                    1 => {
+                        // Continue along the same path
+                        (coord, prev_direction) = neighbors[0];
+                        cost += 1;
+                    }
+                    _ => {
+                        // Found an intersection
+                        if !graph.contains_node(coord) {
+                            // We haven't visited this intersection before, so we need to explore it
+                            for (_, direction) in neighbors {
+                                queue.push_back((coord, direction));
+                            }
+                        }
+
+                        break coord;
+                    }
+                }
+            };
+
+            // Add edge from previous node to this node
+            graph.add_edge(from_coord, to_coord, cost);
+
+            if part_two {
+                // Add edge from this node to previous node
+                graph.add_edge(to_coord, from_coord, cost);
+            }
         }
+
+        graph
+    }
+
+    fn merge_into_single_neighbor(graph: &mut DiGraphMap<Coord, Cost>, node: Coord) -> Coord {
+        let neighbors = graph.neighbors(node).collect::<Vec<_>>();
+        assert_eq!(neighbors.len(), 1);
+
+        let neighbor = neighbors[0];
+
+        // Remove edges between node and neighbor
+        graph.remove_edge(node, neighbor).unwrap();
+        let removed_cost = graph.remove_edge(neighbor, node).unwrap();
+
+        // Add removed cost to that of neighbor's other edges
+        let neighbor_neighbors = graph.neighbors(neighbor).collect::<Vec<_>>();
+        for neighbor_neighbor in neighbor_neighbors {
+            graph
+                .edge_weight_mut(neighbor, neighbor_neighbor)
+                .map(|cost| *cost += removed_cost)
+                .unwrap();
+            graph
+                .edge_weight_mut(neighbor_neighbor, neighbor)
+                .map(|cost| *cost += removed_cost)
+                .unwrap();
+        }
+
+        // Remove node
+        graph.remove_node(node);
+
+        neighbor
+    }
+
+    fn remove_incoming_edges(graph: &mut DiGraphMap<Coord, Cost>, node: Coord) {
+        let neighbors = graph
+            .neighbors_directed(node, petgraph::Direction::Incoming)
+            .collect::<Vec<_>>();
+        for neighbor in neighbors {
+            graph.remove_edge(neighbor, node).unwrap();
+        }
+    }
+
+    fn remove_outgoing_edges(graph: &mut DiGraphMap<Coord, Cost>, node: Coord) {
+        let neighbors = graph
+            .neighbors_directed(node, petgraph::Direction::Outgoing)
+            .collect::<Vec<_>>();
+        for neighbor in neighbors {
+            graph.remove_edge(node, neighbor).unwrap();
+        }
+    }
+
+    pub fn optimize_graph(
+        mut graph: DiGraphMap<Coord, Cost>,
+        start_coord: Coord,
+        target_coord: Coord,
+    ) -> (DiGraphMap<Coord, Cost>, Coord, Coord) {
+        let start_coord = merge_into_single_neighbor(&mut graph, start_coord);
+        remove_incoming_edges(&mut graph, start_coord);
+
+        let target_coord = merge_into_single_neighbor(&mut graph, target_coord);
+        remove_outgoing_edges(&mut graph, target_coord);
+
+        (graph, start_coord, target_coord)
     }
 }
 
@@ -535,7 +725,35 @@ pub fn part_two(input: &str) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
+    use petgraph::dot::Dot;
+
     use super::*;
+
+    #[test]
+    fn debug() {
+        let input = advent_of_code::template::read_file("inputs", DAY);
+
+        let tile_grid = tile_grid::TileGrid::new(&input);
+
+        // Start coord is the only path tile in the top row
+        let start_coord = (0..tile_grid.width())
+            .map(|x| Coord::new(x, 0))
+            .find(|&coord| tile_grid.get(coord) == Some(Tile::Path))
+            .unwrap();
+
+        // Target coord is the only path tile in the bottom row
+        let target_coord = (0..tile_grid.width())
+            .map(|x| Coord::new(x, tile_grid.height() - 1))
+            .find(|&coord| tile_grid.get(coord) == Some(Tile::Path))
+            .unwrap();
+
+        let part_two = true;
+        let graph = graph::build_graph(tile_grid, start_coord, target_coord, part_two);
+        let (graph, start_coord, target_coord) =
+            graph::optimize_graph(graph, start_coord, target_coord);
+
+        println!("{:?}", Dot::new(&graph));
+    }
 
     #[test]
     fn test_part_one() {
