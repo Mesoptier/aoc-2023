@@ -11,7 +11,8 @@ publish = false
 doctest = false
 
 [profile.release]
-lto = true
+#lto = "fat"
+#codegen-units = 1 # Must be set to 1 for fat LTO to work properly
 
 [profile.dhat]
 inherits = "release"
