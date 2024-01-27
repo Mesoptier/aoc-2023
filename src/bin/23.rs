@@ -253,8 +253,8 @@ mod graph {
         let graph = DiGraph::from_edges(
             graph
                 .all_edges()
-                .map(|(souce, target, cost)| {
-                    (node_index_map[&souce], node_index_map[&target], cost)
+                .map(|(source, target, cost)| {
+                    (node_index_map[&source], node_index_map[&target], cost)
                 })
                 .collect::<Vec<_>>(),
         );
