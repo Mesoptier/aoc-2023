@@ -74,10 +74,12 @@ mod tile_grid {
 }
 
 mod graph {
-    use std::collections::VecDeque;
+    use std::collections::{HashMap, VecDeque};
 
     use arrayvec::ArrayVec;
+    use petgraph::graph::{DiGraph, NodeIndex};
     use petgraph::graphmap::DiGraphMap;
+    use petgraph::visit::IntoNodeReferences;
 
     use advent_of_code::util::coord::Direction;
 
@@ -213,18 +215,58 @@ mod graph {
         }
     }
 
+    /// Optimizes the graph such that:
+    /// - Start node has no incoming edges
+    /// - Target node has no outgoing edges
+    /// - There are `N <= 34` nodes, where nodes with indices:
+    ///     - `0..=N-3` are trail nodes,
+    ///     - `N-2` is the start node,
+    ///     - `N-1` is the target node.
     pub fn optimize_graph(
         mut graph: DiGraphMap<Coord, Cost>,
         start_coord: Coord,
         target_coord: Coord,
-    ) -> (DiGraphMap<Coord, Cost>, Coord, Coord) {
+    ) -> (DiGraph<(), Cost>, NodeIndex, NodeIndex) {
         let start_coord = merge_into_single_neighbor(&mut graph, start_coord);
         remove_incoming_edges(&mut graph, start_coord);
 
         let target_coord = merge_into_single_neighbor(&mut graph, target_coord);
         remove_outgoing_edges(&mut graph, target_coord);
 
-        (graph, start_coord, target_coord)
+        let node_index_map = {
+            // Sort nodes so start and target nodes are at the end
+            let mut sorted_nodes = graph.nodes().collect::<Vec<_>>();
+            sorted_nodes.sort_unstable_by_key(|node| match *node {
+                node if node == start_coord => 1,
+                node if node == target_coord => 2,
+                _ => 0,
+            });
+
+            HashMap::<Coord, u32>::from_iter(
+                sorted_nodes
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, node)| (node, index as u32)),
+            )
+        };
+
+        let graph = DiGraph::from_edges(
+            graph
+                .all_edges()
+                .map(|(souce, target, cost)| {
+                    (node_index_map[&souce], node_index_map[&target], cost)
+                })
+                .collect::<Vec<_>>(),
+        );
+
+        let start_node: NodeIndex = node_index_map[&start_coord].into();
+        let target_node: NodeIndex = node_index_map[&target_coord].into();
+
+        assert!(graph.node_count() <= 34);
+        assert_eq!(start_node.index(), graph.node_count() - 2);
+        assert_eq!(target_node.index(), graph.node_count() - 1);
+
+        (graph, start_node, target_node)
     }
 }
 
@@ -749,10 +791,20 @@ mod tests {
 
         let part_two = true;
         let graph = graph::build_graph(tile_grid, start_coord, target_coord, part_two);
-        let (graph, start_coord, target_coord) =
+        let (graph, start_node, target_node) =
             graph::optimize_graph(graph, start_coord, target_coord);
 
-        println!("{:?}", Dot::new(&graph));
+        println!(
+            "{}",
+            Dot::new(&graph.map(
+                |node, _| match node {
+                    node if node == start_node => "Start".to_string(),
+                    node if node == target_node => "Target".to_string(),
+                    _ => node.index().to_string(),
+                },
+                |_, cost| *cost,
+            ))
+        );
     }
 
     #[test]
