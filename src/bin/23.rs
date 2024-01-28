@@ -187,6 +187,7 @@ impl AdjacencyList {
         self.0.values_mut()
     }
 
+    /// Returns the set of internal nodes that have an incoming edge from `node`.
     #[inline]
     fn image(&self, node: NodeIndex) -> u32 {
         self.0[node]
@@ -196,6 +197,7 @@ impl AdjacencyList {
             .fold(0, |a, b| a | b)
     }
 
+    /// Returns the set of internal nodes that have an outgoing edge to `node`.
     #[inline]
     fn preimage(&self, node: NodeIndex) -> u32 {
         self.0
