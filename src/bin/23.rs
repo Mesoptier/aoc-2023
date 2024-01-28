@@ -12,11 +12,11 @@ use crate::tile_grid::Tile;
 
 advent_of_code::solution!(23);
 
-pub fn part_one(input: &str) -> Option<u32> {
+pub fn part_one(input: &str) -> Option<Cost> {
     solve(input, false)
 }
 
-pub fn part_two(input: &str) -> Option<u32> {
+pub fn part_two(input: &str) -> Option<Cost> {
     solve(input, true)
 }
 
@@ -25,17 +25,13 @@ type Coord = advent_of_code::util::coord::Coord<CoordT>;
 
 type NodeIndex = u32;
 type Cost = u32;
-const MAX_DEGREE: usize = 4;
 
-type AdjacencyList =
-    VecTable<NodeIndex, ArrayVec<(NodeIndex, Cost), MAX_DEGREE>, LinearIndexer<NodeIndex>>;
-
-fn solve(input: &str, part_two: bool) -> Option<u32> {
+fn solve(input: &str, part_two: bool) -> Option<Cost> {
     let (adj_list, start_node, target_node) = build_trails_map(input, part_two);
 
-    debug_assert!(adj_list.indexer().len() <= 34);
-    debug_assert_eq!(start_node as usize, adj_list.indexer().len() - 2);
-    debug_assert_eq!(target_node as usize, adj_list.indexer().len() - 1);
+    debug_assert!(adj_list.len() <= 34);
+    debug_assert_eq!(start_node, adj_list.len() - 2);
+    debug_assert_eq!(target_node, adj_list.len() - 1);
 
     // ADJACENCY LIST
     //
@@ -76,25 +72,15 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
         adj_list
     };
 
-    // `preimage(target_node)` is the set of nodes that have an edge outgoing to the target node.
-    let target_preimage = adj_list
-        .iter()
-        .filter(|(_, neighbors)| {
-            neighbors
-                .iter()
-                .any(|(neighbor, _)| *neighbor == target_node)
-        })
-        .map(|(node, _)| 1 << node)
-        .fold(0, |a, b| a | b);
-
     let mut stack = Vec::new();
     let mut max_path_cost = 0;
 
-    let mut cache = Cache::new(*adj_list.indexer());
+    let mut cache = Cache::new(*adj_list.0.indexer());
     let compute_reachable = ComputeReachable::new(&adj_list);
+    let target_preimage = adj_list.preimage(target_node);
 
     // Cannot push start node to stack here, because its index is out of bounds for the bitsets.
-    for &(next_node, next_steps) in &adj_list[start_node] {
+    for &(next_node, next_steps) in adj_list.get(start_node) {
         stack.push((next_node, next_steps, 0));
     }
 
@@ -128,7 +114,7 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
 
         visited.set(node);
 
-        for &(next_node, next_cost) in &adj_list[node] {
+        for &(next_node, next_cost) in adj_list.get(node) {
             stack.push((next_node, path_cost + next_cost, visited));
         }
     }
@@ -169,10 +155,56 @@ fn build_trails_map(input: &str, part_two: bool) -> (AdjacencyList, NodeIndex, N
     let adj_list = VecTable::from_vec(adj_list_data, indexer);
 
     (
-        adj_list,
+        AdjacencyList(adj_list),
         start_node.index() as NodeIndex,
         target_node.index() as NodeIndex,
     )
+}
+
+const MAX_DEGREE: usize = 4;
+struct AdjacencyList(
+    VecTable<NodeIndex, ArrayVec<(NodeIndex, Cost), MAX_DEGREE>, LinearIndexer<NodeIndex>>,
+);
+
+impl AdjacencyList {
+    #[inline]
+    fn len(&self) -> NodeIndex {
+        self.0.indexer().len() as NodeIndex
+    }
+
+    #[inline]
+    fn get(&self, node: NodeIndex) -> &ArrayVec<(NodeIndex, Cost), MAX_DEGREE> {
+        &self.0[node]
+    }
+
+    #[inline]
+    fn is_internal(&self, node: NodeIndex) -> bool {
+        node < self.len() - 2
+    }
+
+    #[inline]
+    fn values_mut(&mut self) -> impl Iterator<Item = &mut ArrayVec<(NodeIndex, Cost), MAX_DEGREE>> {
+        self.0.values_mut()
+    }
+
+    #[inline]
+    fn image(&self, node: NodeIndex) -> u32 {
+        self.0[node]
+            .iter()
+            .filter(|(node, _)| self.is_internal(*node))
+            .map(|(node, _)| 1 << node)
+            .fold(0, |a, b| a | b)
+    }
+
+    #[inline]
+    fn preimage(&self, node: NodeIndex) -> u32 {
+        self.0
+            .iter()
+            .filter(|(_, neighbors)| neighbors.iter().any(|(neighbor, _)| *neighbor == node))
+            .filter(|(node, _)| self.is_internal(*node))
+            .map(|(node, _)| 1 << node)
+            .fold(0, |a, b| a | b)
+    }
 }
 
 mod tile_grid {
@@ -462,18 +494,9 @@ struct ComputeReachable {
 impl ComputeReachable {
     fn new(adj_list: &AdjacencyList) -> Self {
         let mut image = [0; 32];
-        adj_list
-            .iter()
-            .take(32)
-            .map(|(_, neighbors)| {
-                neighbors
-                    .iter()
-                    .filter(|(neighbor, _)| *neighbor < 32)
-                    .map(|(neighbor, _)| 1 << *neighbor)
-                    .fold(0, |a, b| a | b)
-            })
-            .enumerate()
-            .for_each(|(i, mask)| image[i] = mask);
+        for node in 0..adj_list.len() - 2 {
+            image[node as usize] = adj_list.image(node);
+        }
         let image = u32x32::from_array(image);
 
         ComputeReachable { image }
