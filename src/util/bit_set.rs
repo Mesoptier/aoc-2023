@@ -121,6 +121,11 @@ macro_rules! impl_bitset {
             fn is_subset(&self, other: &$t) -> bool {
                 self & other == *self
             }
+
+            #[inline]
+            fn is_superset(&self, other: &$t) -> bool {
+                self & other == *other
+            }
         }
     )*)
 }
