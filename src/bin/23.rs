@@ -112,14 +112,8 @@ fn solve(input: &str, part_two: bool) -> Option<Cost> {
 
         // Prune the path if we've already found a path to this node that's at least as long and can still reach the
         // same set of nodes.
-        match cache.entry(node, reachable) {
-            Entry::Occupied(entry) if *entry.get() >= path_cost => continue,
-            Entry::Occupied(mut entry) => {
-                entry.insert(path_cost);
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(path_cost);
-            }
+        if cache.insert_if_max(node, reachable, path_cost) {
+            continue;
         }
 
         visited.set(node);
@@ -492,16 +486,20 @@ impl Cache {
         }
     }
 
-    fn get(&self, node: NodeIndex, reachable: u32) -> Option<u32> {
-        self.cache[node].get(&reachable).copied()
-    }
-
-    fn insert(&mut self, node: NodeIndex, reachable: u32, steps: u32) {
-        self.cache[node].insert(reachable, steps);
-    }
-
-    fn entry(&mut self, node: NodeIndex, reachable: u32) -> Entry<u32, u32> {
-        self.cache[node].entry(reachable)
+    /// Inserts a new (node, reachable)-cost pair into the cache if a pair with a higher cost does not already exist.
+    /// Returns `true` if the new cost was inserted, `false` otherwise.
+    fn insert_if_max(&mut self, node: NodeIndex, reachable: u32, cost: u32) -> bool {
+        match self.cache[node].entry(reachable) {
+            Entry::Occupied(entry) if *entry.get() >= cost => true,
+            Entry::Occupied(mut entry) => {
+                entry.insert(cost);
+                false
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(cost);
+                false
+            }
+        }
     }
 }
 
