@@ -29,18 +29,9 @@ const MAX_DEGREE: usize = 4;
 
 type AdjacencyList =
     VecTable<NodeIndex, ArrayVec<(NodeIndex, Cost), MAX_DEGREE>, LinearIndexer<NodeIndex>>;
-struct TrailsMap {
-    adj_list: AdjacencyList,
-    start_node: NodeIndex,
-    target_node: NodeIndex,
-}
 
 fn solve(input: &str, part_two: bool) -> Option<u32> {
-    let TrailsMap {
-        adj_list,
-        start_node,
-        target_node,
-    } = build_trails_map(input, part_two);
+    let (adj_list, start_node, target_node) = build_trails_map(input, part_two);
 
     debug_assert!(adj_list.indexer().len() <= 34);
     debug_assert_eq!(start_node as usize, adj_list.indexer().len() - 2);
@@ -145,7 +136,7 @@ fn solve(input: &str, part_two: bool) -> Option<u32> {
     Some(max_path_cost)
 }
 
-fn build_trails_map(input: &str, part_two: bool) -> TrailsMap {
+fn build_trails_map(input: &str, part_two: bool) -> (AdjacencyList, NodeIndex, NodeIndex) {
     let tile_grid = tile_grid::TileGrid::new(input);
 
     // Start coord is the only path tile in the top row
@@ -177,11 +168,11 @@ fn build_trails_map(input: &str, part_two: bool) -> TrailsMap {
     let indexer = LinearIndexer::new(adj_list_data.len() as NodeIndex);
     let adj_list = VecTable::from_vec(adj_list_data, indexer);
 
-    TrailsMap {
+    (
         adj_list,
-        start_node: start_node.index() as NodeIndex,
-        target_node: target_node.index() as NodeIndex,
-    }
+        start_node.index() as NodeIndex,
+        target_node.index() as NodeIndex,
+    )
 }
 
 mod tile_grid {
