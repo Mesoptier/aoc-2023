@@ -2,6 +2,7 @@
 
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::ops::BitAnd;
 use std::simd::prelude::*;
 
 use arrayvec::ArrayVec;
@@ -521,26 +522,28 @@ impl ComputeReachable {
     }
 
     fn compute_reachable(&self, node: NodeIndex, visited: &u32) -> u32 {
-        let not_visited = !visited;
-        let mut reachable = 1 << node;
+        let mut reachable = 0;
+        // Start search from `node`
+        reachable.set(node);
+
+        // Filter out nodes in advance that have already been visited
+        let unvisited_image = self.image.bitand(u32x32::splat(!visited));
 
         loop {
+            // For each node `i` in `reachable`, select the set of unvisited nodes that have an edge incoming from `i`,
+            // and add them to the `reachable` set.
             let next_reachable = reachable
                 | mask32x32::from_bitmask(reachable as u64)
-                    .select(self.image, u32x32::splat(0))
+                    .select(unvisited_image, u32x32::splat(0))
                     .reduce_or();
 
-            // Can't re-visit nodes that have already been visited
-            let next_reachable = next_reachable & not_visited;
-
             if next_reachable == reachable {
-                break;
+                // Didn't reach any new nodes, so we're done
+                return reachable;
             }
 
             reachable = next_reachable;
         }
-
-        reachable
     }
 }
 #[cfg(test)]
