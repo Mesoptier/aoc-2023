@@ -1,5 +1,6 @@
 #![feature(portable_simd)]
 
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::simd::prelude::*;
 
@@ -110,10 +111,15 @@ fn solve(input: &str, part_two: bool) -> Option<Cost> {
 
         // Prune the path if we've already found a path to this node that's at least as long and can still reach the
         // same set of nodes.
-        match cache.get(node, reachable) {
-            Some(cached_path_cost) if cached_path_cost >= path_cost => continue,
-            _ => cache.insert(node, reachable, path_cost),
-        };
+        match cache.entry(node, reachable) {
+            Entry::Occupied(entry) if *entry.get() >= path_cost => continue,
+            Entry::Occupied(mut entry) => {
+                entry.insert(path_cost);
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(path_cost);
+            }
+        }
 
         visited.set(node);
 
@@ -491,6 +497,10 @@ impl Cache {
 
     fn insert(&mut self, node: NodeIndex, reachable: u32, steps: u32) {
         self.cache[node].insert(reachable, steps);
+    }
+
+    fn entry(&mut self, node: NodeIndex, reachable: u32) -> Entry<u32, u32> {
+        self.cache[node].entry(reachable)
     }
 }
 
