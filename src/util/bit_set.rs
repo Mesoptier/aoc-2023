@@ -1,4 +1,4 @@
-pub trait BitSet: Sized {
+pub trait BitSet: Sized + Eq {
     /// The type used to index into the bit set.
     type Index;
 
@@ -39,6 +39,16 @@ pub trait BitSet: Sized {
     /// intersection.
     fn is_disjoint(&self, other: &Self) -> bool {
         self.intersection(other).is_empty()
+    }
+
+    /// Returns `true` if `self` is a subset of `other`.
+    fn is_subset(&self, other: &Self) -> bool {
+        self.intersection(other) == *self
+    }
+
+    /// Returns `true` if `self` is a superset of `other`.
+    fn is_superset(&self, other: &Self) -> bool {
+        self.intersection(other) == *other
     }
 }
 
@@ -105,6 +115,11 @@ macro_rules! impl_bitset {
             #[inline]
             fn is_disjoint(&self, other: &$t) -> bool {
                 self & other == 0
+            }
+
+            #[inline]
+            fn is_subset(&self, other: &$t) -> bool {
+                self & other == *self
             }
         }
     )*)

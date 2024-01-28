@@ -1,14 +1,15 @@
 #![feature(portable_simd)]
 
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
 use std::ops::BitAnd;
 use std::simd::prelude::*;
 
 use arrayvec::ArrayVec;
+use itertools::Itertools;
+use petgraph::dot::Dot;
 use petgraph::visit::EdgeRef;
+use petgraph::Graph;
 
-use advent_of_code::util::{BitSet, Indexer, LinearIndexer, VecTable};
+use advent_of_code::util::{BitSet, Indexer, LinearIndexer, MaxBitSetTrie, VecTable};
 
 use crate::tile_grid::Tile;
 
@@ -112,7 +113,7 @@ fn solve(input: &str, part_two: bool) -> Option<Cost> {
 
         // Prune the path if we've already found a path to this node that's at least as long and can still reach the
         // same set of nodes.
-        if cache.insert_if_max(node, reachable, path_cost) {
+        if !cache.insert_if_max(node, reachable, path_cost) {
             continue;
         }
 
@@ -125,6 +126,18 @@ fn solve(input: &str, part_two: bool) -> Option<Cost> {
                 .map(|&(next_node, next_cost)| (next_node, path_cost + next_cost, visited)),
         );
     }
+
+    // let cache_graph = Graph::from(&cache.cache[0]);
+    // println!("{:?}", Dot::new(&cache_graph));
+
+    // cache.cache.iter().for_each(|(node, cache)| {
+    //     cache.iter().tuple_combinations().for_each(
+    //         |((reachable_a, cost_a), (reachable_b, cost_b))| {
+    //             assert!(!reachable_a.is_subset(reachable_b) || cost_a > cost_b);
+    //             assert!(!reachable_b.is_subset(reachable_a) || cost_b > cost_a);
+    //         },
+    //     );
+    // });
 
     Some(max_path_cost)
 }
@@ -476,7 +489,7 @@ mod graph {
 }
 
 struct Cache {
-    cache: VecTable<NodeIndex, HashMap<u32, u32>, LinearIndexer<NodeIndex>>,
+    cache: VecTable<NodeIndex, MaxBitSetTrie<u32, u32>, LinearIndexer<NodeIndex>>,
 }
 
 impl Cache {
@@ -489,17 +502,8 @@ impl Cache {
     /// Inserts a new (node, reachable)-cost pair into the cache if a pair with a higher cost does not already exist.
     /// Returns `true` if the new cost was inserted, `false` otherwise.
     fn insert_if_max(&mut self, node: NodeIndex, reachable: u32, cost: u32) -> bool {
-        match self.cache[node].entry(reachable) {
-            Entry::Occupied(entry) if *entry.get() >= cost => true,
-            Entry::Occupied(mut entry) => {
-                entry.insert(cost);
-                false
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(cost);
-                false
-            }
-        }
+        let cache = &mut self.cache[node];
+        cache.insert_if_max(reachable, cost)
     }
 }
 
