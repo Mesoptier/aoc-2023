@@ -80,9 +80,12 @@ fn solve(input: &str, part_two: bool) -> Option<Cost> {
     let target_preimage = adj_list.preimage(target_node);
 
     // Cannot push start node to stack here, because its index is out of bounds for the bitsets.
-    for &(next_node, next_steps) in adj_list.get(start_node) {
-        stack.push((next_node, next_steps, 0));
-    }
+    stack.extend(
+        adj_list
+            .get(start_node)
+            .iter()
+            .map(|&(next_node, next_cost)| (next_node, next_cost, 0)),
+    );
 
     while let Some((node, path_cost, mut visited)) = stack.pop() {
         if node == target_node {
@@ -114,9 +117,12 @@ fn solve(input: &str, part_two: bool) -> Option<Cost> {
 
         visited.set(node);
 
-        for &(next_node, next_cost) in adj_list.get(node) {
-            stack.push((next_node, path_cost + next_cost, visited));
-        }
+        stack.extend(
+            adj_list
+                .get(node)
+                .iter()
+                .map(|&(next_node, next_cost)| (next_node, path_cost + next_cost, visited)),
+        );
     }
 
     Some(max_path_cost)
