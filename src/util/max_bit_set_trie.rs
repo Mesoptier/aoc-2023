@@ -1,25 +1,19 @@
-use crate::util::BitSet;
+use crate::util::{BitSet, ContainmentType};
 use petgraph::Graph;
 
 #[derive(Debug)]
-enum Node<K, V> {
-    Leaf {
-        set: K,
-        value: V,
-    },
-    Branch {
-        /// INVARIANT: `set` is a superset of all children's sets.
-        set: K,
+struct Node<K, V> {
+    /// INVARIANT: `set` is a superset of all children's sets.
+    set: K,
 
-        /// INVARIANT: `min_value` is less than or equal to the minimum value of all children.
-        /// It may be less than the minimum if there is a value associated with this branch node.
-        min_value: V,
+    /// INVARIANT: `min_value` is less than or equal to the minimum value of all valid children.
+    /// It may be less than the minimum if there is a value associated with this branch node.
+    min_value: V,
 
-        /// INVARIANT: `max_value` is the maximum value of all children.
-        max_value: V,
+    /// INVARIANT: `max_value` is the maximum value of all children.
+    max_value: V,
 
-        children: Vec<Node<K, V>>,
-    },
+    children: Vec<Node<K, V>>,
 }
 
 enum InsertResult {
@@ -34,88 +28,61 @@ where
     K: BitSet + Copy,
     V: Ord + Copy,
 {
-    fn set(&self) -> K {
-        match self {
-            Node::Leaf { set, .. } => *set,
-            Node::Branch { set, .. } => *set,
-        }
-    }
-
-    fn min_value(&self) -> V {
-        match self {
-            Node::Leaf { value, .. } => *value,
-            Node::Branch { min_value, .. } => *min_value,
-        }
-    }
-
-    fn max_value(&self) -> V {
-        match self {
-            Node::Leaf { value, .. } => *value,
-            Node::Branch { max_value, .. } => *max_value,
-        }
-    }
-
     fn insert_if_max(&mut self, set: K, value: V) -> Result<InsertResult, ()> {
-        if !set.is_subset(&self.set()) {
-            return Err(());
-        }
-
-        match self {
-            Node::Leaf {
-                set: node_set,
-                value: node_value,
-            } => {
-                if *node_value >= value {
-                    // A superset with a higher value already exists.
+        match set.containment_type(&self.set) {
+            ContainmentType::None | ContainmentType::Superset => Err(()),
+            ContainmentType::Equal => {
+                if self.min_value >= value {
+                    // An equal set with a higher value already exists.
                     return Ok(InsertResult::NotInserted);
                 }
 
-                if *node_set == set {
-                    // Exact match, update self.
-                    *node_value = value;
+                if value >= self.max_value {
+                    // New set is a superset of all children and new value is greater than all children, so this node
+                    // can be replaced with a leaf.
+                    self.min_value = value;
+                    self.max_value = value;
+                    self.children.clear();
                 } else {
-                    *self = Node::Branch {
-                        set: *node_set,
-                        min_value: *node_value,
-                        max_value: value,
-                        children: vec![Node::Leaf { set, value }],
-                    };
+                    self.min_value = value;
+                    self.max_value = value; // Updated in the loop below.
+
+                    // Remove all children with a max_value lower than the new min_value.
+                    let mut i = 0;
+                    while i < self.children.len() {
+                        let child_max_value = self.children[i].max_value;
+                        if child_max_value <= value {
+                            self.children.swap_remove(i);
+                        } else {
+                            self.max_value = self.max_value.max(child_max_value);
+                            i += 1;
+                        }
+                    }
                 }
 
                 Ok(InsertResult::Inserted)
             }
-            Node::Branch {
-                set: node_set,
-                min_value,
-                max_value,
-                children,
-                ..
-            } => {
-                if *min_value >= value {
+            ContainmentType::Subset => {
+                if self.min_value >= value {
                     // A superset with a higher value already exists.
                     return Ok(InsertResult::NotInserted);
                 }
 
-                if *node_set == set {
-                    // Exact match, update self.
-                    if *max_value <= value {
-                        *self = Node::Leaf { set, value };
-                    } else {
-                        *min_value = value;
-                        children.retain(|child| child.max_value() >= value);
-                    }
-
-                    return Ok(InsertResult::Inserted);
-                }
-
-                for child in children.iter_mut() {
+                // Try to insert into a child node.
+                for child in self.children.iter_mut() {
                     if let Ok(result) = child.insert_if_max(set, value) {
                         return Ok(result);
                     }
                 }
 
-                // No child was a superset of `set`, so add a new child.
-                children.push(Node::Leaf { set, value });
+                // Could not insert into a child node, so add a new child.
+                self.children.push(Node {
+                    set,
+                    min_value: value,
+                    max_value: value,
+                    children: Vec::new(),
+                });
+
                 Ok(InsertResult::Inserted)
             }
         }
@@ -142,7 +109,12 @@ where
     pub fn insert_if_max(&mut self, set: K, value: V) -> bool {
         let node = match &mut self.root {
             None => {
-                self.root = Some(Node::Leaf { set, value });
+                self.root = Some(Node {
+                    set,
+                    min_value: value,
+                    max_value: value,
+                    children: Vec::new(),
+                });
                 return true;
             }
             Some(node) => node,
@@ -152,23 +124,26 @@ where
             Ok(InsertResult::Inserted) => true,
             Ok(InsertResult::NotInserted) => false,
             Err(()) => {
+                // Could not insert into the root node, so replace it with a branch node holding both the old root
+                // and the new pair.
+
                 let old_node = std::mem::replace(
                     node,
-                    Node::Branch {
-                        set: set.union(&node.set()),
-                        min_value: value.min(node.min_value()),
-                        max_value: value.max(node.max_value()),
+                    Node {
+                        set: set.union(&node.set),
+                        min_value: value.min(node.min_value),
+                        max_value: value.max(node.max_value),
                         children: Vec::new(),
                     },
                 );
 
-                match node {
-                    Node::Branch { children, .. } => {
-                        children.push(old_node);
-                        children.push(Node::Leaf { set, value });
-                    }
-                    _ => unreachable!(),
-                }
+                node.children.push(old_node);
+                node.children.push(Node {
+                    set,
+                    min_value: value,
+                    max_value: value,
+                    children: Vec::new(),
+                });
 
                 true
             }
@@ -185,19 +160,14 @@ where
         let mut graph = Graph::new();
 
         if let Some(root) = &trie.root {
-            let root_index = graph.add_node((root.set(), root.min_value()));
+            let root_index = graph.add_node((root.set, root.min_value));
             let mut stack = vec![(root_index, root)];
 
             while let Some((parent_index, parent)) = stack.pop() {
-                match parent {
-                    Node::Leaf { .. } => {}
-                    Node::Branch { children, .. } => {
-                        for child in children {
-                            let child_index = graph.add_node((child.set(), child.min_value()));
-                            graph.add_edge(parent_index, child_index, ());
-                            stack.push((child_index, child));
-                        }
-                    }
+                for child in &parent.children {
+                    let child_index = graph.add_node((child.set, child.min_value));
+                    graph.add_edge(parent_index, child_index, ());
+                    stack.push((child_index, child));
                 }
             }
         }

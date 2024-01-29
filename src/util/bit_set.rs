@@ -1,3 +1,14 @@
+pub enum ContainmentType {
+    /// `self` is both a subset and a superset of `other`.
+    Equal,
+    /// `self` is a proper subset of `other`.
+    Subset,
+    /// `self` is a proper superset of `other`.
+    Superset,
+    /// `self` is neither a subset nor a superset of `other`.
+    None,
+}
+
 pub trait BitSet: Sized + Eq {
     /// The type used to index into the bit set.
     type Index;
@@ -49,6 +60,16 @@ pub trait BitSet: Sized + Eq {
     /// Returns `true` if `self` is a superset of `other`.
     fn is_superset(&self, other: &Self) -> bool {
         self.intersection(other) == *other
+    }
+
+    /// Returns the containment type of `self` in `other`.
+    fn containment_type(&self, other: &Self) -> ContainmentType {
+        match (self.is_subset(other), self.is_superset(other)) {
+            (true, true) => ContainmentType::Equal,
+            (true, false) => ContainmentType::Subset,
+            (false, true) => ContainmentType::Superset,
+            (false, false) => ContainmentType::None,
+        }
     }
 }
 
