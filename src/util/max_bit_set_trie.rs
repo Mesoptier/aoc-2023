@@ -1,129 +1,202 @@
-use std::cmp::Ordering;
+use crate::util::{BitSet, ContainmentType};
+use petgraph::Graph;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct Node<K, V> {
-    children: Vec<(K, Node<K, V>)>,
-    terminal_value: Option<V>,
+    /// INVARIANT: `set` is a superset of all children's sets.
+    set: K,
+
+    /// INVARIANT: `min_value` is less than or equal to the minimum value of all valid children.
+    /// It may be less than the minimum if there is a value associated with this branch node.
+    min_value: V,
+
+    /// INVARIANT: `max_value` is the maximum value of all children.
+    max_value: V,
+
+    // TODO: INVARIANT: `children` is sorted by `min_value`?
+    children: Vec<Node<K, V>>,
 }
 
 enum InsertResult {
+    /// The value was inserted.
     Inserted,
-    Superseded,
+    /// The value was not inserted because a superset with a higher value already exists.
+    NotInserted,
 }
 
 impl<K, V> Node<K, V>
 where
-    K: Ord + Copy,
+    K: BitSet + Copy,
     V: Ord + Copy,
 {
-    fn new_branch(set: &[K], value: V) -> Self {
-        match set.split_first() {
-            None => Self {
-                children: Vec::new(),
-                terminal_value: Some(value),
-            },
-            Some((key, remaining_set)) => Self {
-                children: vec![(*key, Self::new_branch(remaining_set, value))],
-                terminal_value: None,
-            },
+    fn leaf(set: K, value: V) -> Self {
+        Self {
+            set,
+            min_value: value,
+            max_value: value,
+            children: Vec::new(),
         }
     }
 
-    fn insert_if_max(
-        &mut self,
-        set: &[K],
-        value: V,
-        allow_insert: bool,
-    ) -> Result<InsertResult, ()> {
-        if set.is_empty() {
-            for (_, child) in &mut self.children {
-                if let Ok(result) = child.insert_if_max(set, value, false) {
-                    return Ok(result);
-                }
-            }
-
-            return match self.terminal_value {
-                None if allow_insert => {
-                    self.terminal_value = Some(value);
-                    Ok(InsertResult::Inserted)
-                }
-                Some(terminal_value) if terminal_value >= value => Ok(InsertResult::Superseded),
-                Some(terminal_value) if allow_insert => {
-                    debug_assert!(terminal_value < value);
-                    self.terminal_value = Some(value);
-                    Ok(InsertResult::Inserted)
-                }
-                _ => Err(()),
-            };
+    fn pair_branch(left: Self, right: Self) -> Self {
+        Self {
+            set: left.set.union(&right.set),
+            min_value: left.min_value.min(right.min_value),
+            max_value: left.max_value.max(right.max_value),
+            children: vec![left, right],
         }
+    }
 
-        let (key, remaining_set) = set.split_first().unwrap();
-        for (child_key, child) in &mut self.children {
-            match (*child_key).cmp(key) {
-                Ordering::Less => {
-                    if let Ok(result) = child.insert_if_max(set, value, false) {
+    fn insert_if_max(&mut self, set: K, value: V) -> Result<InsertResult, ()> {
+        match set.containment_type(&self.set) {
+            // TODO: Should superset behavior be the same as equal behavior? Except also update the set.
+            ContainmentType::None | ContainmentType::Superset => Err(()),
+            ContainmentType::Equal => {
+                if self.min_value >= value {
+                    // An equal set with a higher value already exists.
+                    return Ok(InsertResult::NotInserted);
+                }
+
+                if value >= self.max_value {
+                    // New set is a superset of all children and new value is greater than all children, so this node
+                    // can be replaced with a leaf.
+                    self.min_value = value;
+                    self.max_value = value;
+                    self.children.clear();
+                } else {
+                    self.min_value = value;
+
+                    let mut i = 0;
+                    while i < self.children.len() {
+                        let child = &self.children[i];
+                        if child.max_value <= value {
+                            self.children.swap_remove(i);
+                        } else if child.min_value <= value {
+                            let child = self.children.swap_remove(i);
+                            self.children.extend(child.children);
+                        } else {
+                            i += 1;
+                        }
+                    }
+                }
+
+                self.assert_invariants();
+                Ok(InsertResult::Inserted)
+            }
+            ContainmentType::Subset => {
+                if self.min_value >= value {
+                    // A superset with a higher value already exists.
+                    return Ok(InsertResult::NotInserted);
+                }
+
+                // Value will definitely be inserted in this subtree, so update max_value.
+                self.max_value = self.max_value.max(value);
+
+                // Try to insert into a child node.
+                for child in self.children.iter_mut() {
+                    if let Ok(result) = child.insert_if_max(set, value) {
+                        self.assert_invariants();
                         return Ok(result);
                     }
                 }
-                Ordering::Equal => {
-                    if let Ok(result) = child.insert_if_max(remaining_set, value, allow_insert) {
-                        return Ok(result);
-                    }
-                }
-                Ordering::Greater => break,
+
+                // Could not insert into a child node, so add a new child.
+                self.children.push(Node::leaf(set, value));
+
+                self.assert_invariants();
+                Ok(InsertResult::Inserted)
             }
         }
+    }
 
-        if allow_insert {
-            let index = self
-                .children
-                .partition_point(|(child_key, _)| *child_key < *key);
-            self.children
-                .insert(index, (*key, Self::new_branch(remaining_set, value)));
-            Ok(InsertResult::Inserted)
-        } else {
-            Err(())
-        }
+    #[inline]
+    fn assert_invariants(&self) {
+        assert!(self
+            .children
+            .iter()
+            .all(|child| self.set.is_superset(&child.set)));
+        assert!(self
+            .children
+            .iter()
+            .all(|child| self.min_value <= child.min_value));
+        assert!(self
+            .children
+            .iter()
+            .all(|child| self.max_value >= child.max_value));
     }
 }
 
-/// Specialized data structure for storing bitsets with associated values. The single supported operation is InsertIfMax,
-/// which inserts a new set-value pair into the trie if a superset with a higher value does not already exist.
+/// Data structure that maps BitSets to values and supports querying the maximum value of supersets for a given BitSet.
 #[derive(Debug, Default)]
 pub struct MaxBitSetTrie<K, V> {
-    root: Node<K, V>,
+    root: Option<Node<K, V>>,
 }
 
 impl<K, V> MaxBitSetTrie<K, V>
 where
-    K: Ord + Copy,
+    K: BitSet + Copy,
     V: Ord + Copy,
 {
     pub fn new() -> Self {
-        Self {
-            root: Node {
-                children: Vec::new(),
-                terminal_value: None,
-            },
-        }
+        Self { root: None }
     }
 
-    pub fn insert_if_max(&mut self, set: &[K], value: V) -> bool {
-        match self.root.insert_if_max(set, value, true) {
+    /// Inserts a new set-value pair into the trie if a superset with a higher value does not already
+    /// exist. Returns `true` if the value was inserted, `false` otherwise.
+    pub fn insert_if_max(&mut self, set: K, value: V) -> bool {
+        let node = match &mut self.root {
+            None => {
+                self.root = Some(Node::leaf(set, value));
+                return true;
+            }
+            Some(node) => node,
+        };
+
+        match node.insert_if_max(set, value) {
             Ok(InsertResult::Inserted) => true,
-            Ok(InsertResult::Superseded) => false,
-            Err(()) => unreachable!(),
+            Ok(InsertResult::NotInserted) => false,
+            Err(()) => {
+                // Could not insert into the root node, so replace it with a branch node holding both the old root
+                // and the new pair.
+
+                let old_root = self.root.take().unwrap();
+                self.root = Some(Node::pair_branch(old_root, Node::leaf(set, value)));
+
+                true
+            }
         }
+    }
+}
+
+impl<K, V> From<&MaxBitSetTrie<K, V>> for Graph<(K, V), ()>
+where
+    K: BitSet + Copy,
+    V: Ord + Copy,
+{
+    fn from(trie: &MaxBitSetTrie<K, V>) -> Self {
+        let mut graph = Graph::new();
+
+        if let Some(root) = &trie.root {
+            let root_index = graph.add_node((root.set, root.min_value));
+            let mut stack = vec![(root_index, root)];
+
+            while let Some((parent_index, parent)) = stack.pop() {
+                for child in &parent.children {
+                    let child_index = graph.add_node((child.set, child.min_value));
+                    graph.add_edge(parent_index, child_index, ());
+                    stack.push((child_index, child));
+                }
+            }
+        }
+
+        graph
     }
 }
 
 #[cfg(test)]
 mod test {
-    use proptest::{prop_assert_eq, proptest};
-
-    use crate::util::BitSet;
-
     use super::*;
+    use proptest::{prop_assert_eq, proptest};
 
     #[derive(Debug)]
     struct NaiveMaxBitSetTrie<K, V> {
@@ -160,10 +233,9 @@ mod test {
             let mut naive_trie = NaiveMaxBitSetTrie::new();
 
             for (set, value) in entries {
-                let set_indices = (0..8).filter(|i| set.get(*i)).collect::<Vec<_>>();
                 prop_assert_eq!(
-                    trie.insert_if_max(&set_indices, value), naive_trie.insert_if_max(set, value),
-                    "set = {:?}, value = {:?}\ntrie = {:#?}\nnaive_trie = {:?}",
+                    trie.insert_if_max(set, value), naive_trie.insert_if_max(set, value),
+                    "set = {:?}, value = {:?}\ntrie = {:?}\nnaive_trie = {:?}",
                     set, value, trie, naive_trie,
                 );
             }
