@@ -1,12 +1,8 @@
-use crate::util::BitSet;
 use std::cmp::Ordering;
 
 #[derive(Debug, Default)]
-struct Node<B, I, V> {
-    /// Union of all bitsets in this node and its descendants.
-    bitset: B,
-
-    children: Vec<(I, Node<B, I, V>)>,
+struct Node<K, V> {
+    children: Vec<(K, Node<K, V>)>,
     terminal_value: Option<V>,
 }
 
@@ -15,34 +11,27 @@ enum InsertResult {
     Superseded,
 }
 
-impl<B, I, V> Node<B, I, V>
+impl<K, V> Node<K, V>
 where
-    B: BitSet<Index = I> + Copy,
-    I: Ord + Copy,
+    K: Ord + Copy,
     V: Ord + Copy,
 {
-    fn new_branch(bitset: B, indices: &[I], value: V) -> Self {
-        match indices.split_first() {
+    fn new_branch(set: &[K], value: V) -> Self {
+        match set.split_first() {
             None => Self {
-                bitset,
                 children: Vec::new(),
                 terminal_value: Some(value),
             },
-            Some((idx, remaining_indices)) => Self {
-                bitset,
-                children: vec![(*idx, Self::new_branch(bitset, remaining_indices, value))],
+            Some((key, remaining_set)) => Self {
+                children: vec![(*key, Self::new_branch(remaining_set, value))],
                 terminal_value: None,
             },
         }
     }
 
     /// Whether this node or any of its descendants contain a superset of `set` with a value greater than or equal to `value`.
-    fn supersedes(&self, bitset: B, indices: &[I], value: V) -> bool {
-        if !self.bitset.is_superset(&bitset) {
-            return false;
-        }
-
-        match indices.split_first() {
+    fn supersedes(&self, set: &[K], value: V) -> bool {
+        match set.split_first() {
             None => {
                 // This node and all of its descendants contain the empty set, so they all supersede `set`. We only need
                 // to check if any of them have a value greater than or equal to `value`.
@@ -51,18 +40,18 @@ where
                 }
                 self.children
                     .iter()
-                    .any(|(_, child)| child.supersedes(bitset, indices, value))
+                    .any(|(_, child)| child.supersedes(&[], value))
             }
-            Some((idx, remaining_indices)) => {
-                for (child_idx, child) in &self.children {
-                    match (*child_idx).cmp(idx) {
+            Some((key, remaining_set)) => {
+                for (child_key, child) in &self.children {
+                    match (*child_key).cmp(key) {
                         Ordering::Less => {
-                            if child.supersedes(bitset, indices, value) {
+                            if child.supersedes(set, value) {
                                 return true;
                             }
                         }
                         Ordering::Equal => {
-                            if child.supersedes(bitset, remaining_indices, value) {
+                            if child.supersedes(remaining_set, value) {
                                 return true;
                             }
                         }
@@ -75,9 +64,9 @@ where
         }
     }
 
-    fn insert_if_max(&mut self, bitset: B, indices: &[I], value: V) -> Result<InsertResult, ()> {
-        if indices.is_empty() {
-            if self.supersedes(bitset, indices, value) {
+    fn insert_if_max(&mut self, set: &[K], value: V) -> Result<InsertResult, ()> {
+        if set.is_empty() {
+            if self.supersedes(&[], value) {
                 return Ok(InsertResult::Superseded);
             }
 
@@ -90,43 +79,16 @@ where
             return Ok(InsertResult::Inserted);
         }
 
-        let (idx, remaining_indices) = indices.split_first().unwrap();
-
-        if !self.bitset.is_superset(&bitset) {
-            self.bitset = self.bitset.union(&bitset);
-
-            return match self
-                .children
-                .binary_search_by_key(idx, |(child_idx, _)| *child_idx)
-            {
-                Ok(index) => {
-                    let (_, child) = &mut self.children[index];
-                    // TODO: Guaranteed to insert?
-                    child.insert_if_max(bitset, remaining_indices, value)
-                }
-                Err(insert_index) => {
-                    self.children.insert(
-                        insert_index,
-                        (*idx, Self::new_branch(bitset, remaining_indices, value)),
-                    );
-                    Ok(InsertResult::Inserted)
-                }
-            };
-        }
-
-        for (child_idx, child) in &mut self.children {
-            match (*child_idx).cmp(idx) {
+        let (key, remaining_set) = set.split_first().unwrap();
+        for (child_key, child) in &mut self.children {
+            match (*child_key).cmp(key) {
                 Ordering::Less => {
-                    if child.supersedes(bitset, indices, value) {
+                    if child.supersedes(set, value) {
                         return Ok(InsertResult::Superseded);
                     }
                 }
                 Ordering::Equal => {
-                    if let Ok(result) = child.insert_if_max(bitset, remaining_indices, value) {
-                        if matches!(result, InsertResult::Inserted) {
-                            self.bitset = self.bitset.union(&bitset);
-                        }
-
+                    if let Ok(result) = child.insert_if_max(remaining_set, value) {
                         return Ok(result);
                     }
                 }
@@ -134,12 +96,11 @@ where
             }
         }
 
-        self.bitset = self.bitset.union(&bitset);
-        self.children.insert(
-            self.children
-                .partition_point(|(child_idx, _)| *child_idx < *idx),
-            (*idx, Self::new_branch(bitset, remaining_indices, value)),
-        );
+        let index = self
+            .children
+            .partition_point(|(child_key, _)| *child_key < *key);
+        self.children
+            .insert(index, (*key, Self::new_branch(remaining_set, value)));
         Ok(InsertResult::Inserted)
     }
 }
@@ -147,29 +108,26 @@ where
 /// Specialized data structure for storing bitsets with associated values. The single supported operation is InsertIfMax,
 /// which inserts a new set-value pair into the trie if a superset with a higher value does not already exist.
 #[derive(Debug, Default)]
-pub struct MaxBitSetTrie<B, I, V> {
-    root: Node<B, I, V>,
+pub struct MaxBitSetTrie<K, V> {
+    root: Node<K, V>,
 }
 
-impl<B, I, V> MaxBitSetTrie<B, I, V>
+impl<K, V> MaxBitSetTrie<K, V>
 where
-    B: BitSet<Index = I> + Copy + Default,
-    I: Ord + Copy,
+    K: Ord + Copy,
     V: Ord + Copy,
 {
     pub fn new() -> Self {
         Self {
             root: Node {
-                bitset: B::default(),
                 children: Vec::new(),
                 terminal_value: None,
             },
         }
     }
 
-    pub fn insert_if_max(&mut self, bitset: B, value: V) -> bool {
-        let indices = bitset.to_vec();
-        match self.root.insert_if_max(bitset, &indices, value) {
+    pub fn insert_if_max(&mut self, set: &[K], value: V) -> bool {
+        match self.root.insert_if_max(set, value) {
             Ok(InsertResult::Inserted) => true,
             Ok(InsertResult::Superseded) => false,
             Err(()) => unreachable!(),
@@ -220,8 +178,9 @@ mod test {
             let mut naive_trie = NaiveMaxBitSetTrie::new();
 
             for (set, value) in entries {
+                let set_indices = (0..8).filter(|i| set.get(*i)).collect::<Vec<_>>();
                 prop_assert_eq!(
-                    trie.insert_if_max(set, value), naive_trie.insert_if_max(set, value),
+                    trie.insert_if_max(&set_indices, value), naive_trie.insert_if_max(set, value),
                     "set = {:?}, value = {:?}\ntrie = {:#?}\nnaive_trie = {:?}",
                     set, value, trie, naive_trie,
                 );
