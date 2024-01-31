@@ -128,7 +128,10 @@ fn solve(input: &str, part_two: bool) -> Option<Cost> {
     }
 
     // let cache_graph = Graph::from(&cache.cache[0]);
-    // println!("{:?}", Dot::new(&cache_graph));
+    // println!(
+    //     "{}",
+    //     Dot::new(&cache_graph.map(|_, (_, cost)| format!("{}", cost), |_, _| "".to_string(),))
+    // );
 
     // cache.cache.iter().for_each(|(node, cache)| {
     //     cache.iter().tuple_combinations().for_each(
