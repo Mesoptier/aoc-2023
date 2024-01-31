@@ -7,3 +7,5 @@
 cc 482456aafeec583a87c22004a13179a3a41b731cf5b65a7eea2bde44e6a9721f # shrinks to entries = [(4, 0), (5, 4), (4, 1)]
 cc 858c10033cdc53b6e69584e62c926beb5bc6352cc8bac7481db8fc901d3bd3f6 # shrinks to entries = [(1, 4), (0, 0)]
 cc 0cceb86890d8b9cc993fbc7b81f01b45afa0a1a1de8d71e590e30fc10b6e707a # shrinks to entries = [(0, 0), (1, 8), (0, 1)]
+cc e56e1c93338665c1aa89b91b4760544e0076491d9001e0d716fc4b1b38d9cbcd # shrinks to entries = [(5, 0), (9, 7), (8, 0)]
+cc 4cdcc1ed56dbbf87a6fbac27655a95cecbc54faee586f43776bc60957cd7552f # shrinks to entries = [(1, 5), (3, 0), (1, 1)]

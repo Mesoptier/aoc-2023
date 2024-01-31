@@ -492,7 +492,7 @@ mod graph {
 }
 
 struct Cache {
-    cache: VecTable<NodeIndex, MaxBitSetTrie<u32, u32>, LinearIndexer<NodeIndex>>,
+    cache: VecTable<NodeIndex, MaxBitSetTrie<u32, u32, u32>, LinearIndexer<NodeIndex>>,
 }
 
 impl Cache {

@@ -71,6 +71,8 @@ pub trait BitSet: Sized + Eq {
             (false, false) => ContainmentType::None,
         }
     }
+
+    fn to_vec(&self) -> Vec<Self::Index>;
 }
 
 macro_rules! impl_bitset {
@@ -146,6 +148,17 @@ macro_rules! impl_bitset {
             #[inline]
             fn is_superset(&self, other: &$t) -> bool {
                 self & other == *other
+            }
+
+            #[inline]
+            fn to_vec(&self) -> Vec<$t> {
+                let mut vec = Vec::new();
+                for i in 0..(<$t>::BITS as $t) {
+                    if self.get(i) {
+                        vec.push(i);
+                    }
+                }
+                vec
             }
         }
     )*)
