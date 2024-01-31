@@ -13,6 +13,7 @@ struct Node<K, V> {
     /// INVARIANT: `max_value` is the maximum value of all children.
     max_value: V,
 
+    // TODO: INVARIANT: `children` is sorted by `min_value`?
     children: Vec<Node<K, V>>,
 }
 
@@ -48,6 +49,7 @@ where
 
     fn insert_if_max(&mut self, set: K, value: V) -> Result<InsertResult, ()> {
         match set.containment_type(&self.set) {
+            // TODO: Should superset behavior be the same as equal behavior? Except also update the set.
             ContainmentType::None | ContainmentType::Superset => Err(()),
             ContainmentType::Equal => {
                 if self.min_value >= value {
@@ -63,21 +65,22 @@ where
                     self.children.clear();
                 } else {
                     self.min_value = value;
-                    self.max_value = value; // Updated in the loop below.
 
-                    // Remove all children with a max_value lower than the new min_value.
                     let mut i = 0;
                     while i < self.children.len() {
-                        let child_max_value = self.children[i].max_value;
-                        if child_max_value <= value {
+                        let child = &self.children[i];
+                        if child.max_value <= value {
                             self.children.swap_remove(i);
+                        } else if child.min_value <= value {
+                            let child = self.children.swap_remove(i);
+                            self.children.extend(child.children);
                         } else {
-                            self.max_value = self.max_value.max(child_max_value);
                             i += 1;
                         }
                     }
                 }
 
+                self.assert_invariants();
                 Ok(InsertResult::Inserted)
             }
             ContainmentType::Subset => {
@@ -86,9 +89,13 @@ where
                     return Ok(InsertResult::NotInserted);
                 }
 
+                // Value will definitely be inserted in this subtree, so update max_value.
+                self.max_value = self.max_value.max(value);
+
                 // Try to insert into a child node.
                 for child in self.children.iter_mut() {
                     if let Ok(result) = child.insert_if_max(set, value) {
+                        self.assert_invariants();
                         return Ok(result);
                     }
                 }
@@ -96,9 +103,26 @@ where
                 // Could not insert into a child node, so add a new child.
                 self.children.push(Node::leaf(set, value));
 
+                self.assert_invariants();
                 Ok(InsertResult::Inserted)
             }
         }
+    }
+
+    #[inline]
+    fn assert_invariants(&self) {
+        assert!(self
+            .children
+            .iter()
+            .all(|child| self.set.is_superset(&child.set)));
+        assert!(self
+            .children
+            .iter()
+            .all(|child| self.min_value <= child.min_value));
+        assert!(self
+            .children
+            .iter()
+            .all(|child| self.max_value >= child.max_value));
     }
 }
 
