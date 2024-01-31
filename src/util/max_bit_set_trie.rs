@@ -28,6 +28,24 @@ where
     K: BitSet + Copy,
     V: Ord + Copy,
 {
+    fn leaf(set: K, value: V) -> Self {
+        Self {
+            set,
+            min_value: value,
+            max_value: value,
+            children: Vec::new(),
+        }
+    }
+
+    fn pair_branch(left: Self, right: Self) -> Self {
+        Self {
+            set: left.set.union(&right.set),
+            min_value: left.min_value.min(right.min_value),
+            max_value: left.max_value.max(right.max_value),
+            children: vec![left, right],
+        }
+    }
+
     fn insert_if_max(&mut self, set: K, value: V) -> Result<InsertResult, ()> {
         match set.containment_type(&self.set) {
             ContainmentType::None | ContainmentType::Superset => Err(()),
@@ -76,12 +94,7 @@ where
                 }
 
                 // Could not insert into a child node, so add a new child.
-                self.children.push(Node {
-                    set,
-                    min_value: value,
-                    max_value: value,
-                    children: Vec::new(),
-                });
+                self.children.push(Node::leaf(set, value));
 
                 Ok(InsertResult::Inserted)
             }
@@ -109,12 +122,7 @@ where
     pub fn insert_if_max(&mut self, set: K, value: V) -> bool {
         let node = match &mut self.root {
             None => {
-                self.root = Some(Node {
-                    set,
-                    min_value: value,
-                    max_value: value,
-                    children: Vec::new(),
-                });
+                self.root = Some(Node::leaf(set, value));
                 return true;
             }
             Some(node) => node,
@@ -127,23 +135,8 @@ where
                 // Could not insert into the root node, so replace it with a branch node holding both the old root
                 // and the new pair.
 
-                let old_node = std::mem::replace(
-                    node,
-                    Node {
-                        set: set.union(&node.set),
-                        min_value: value.min(node.min_value),
-                        max_value: value.max(node.max_value),
-                        children: Vec::new(),
-                    },
-                );
-
-                node.children.push(old_node);
-                node.children.push(Node {
-                    set,
-                    min_value: value,
-                    max_value: value,
-                    children: Vec::new(),
-                });
+                let old_root = self.root.take().unwrap();
+                self.root = Some(Node::pair_branch(old_root, Node::leaf(set, value)));
 
                 true
             }
