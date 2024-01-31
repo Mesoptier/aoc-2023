@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 482456aafeec583a87c22004a13179a3a41b731cf5b65a7eea2bde44e6a9721f # shrinks to entries = [(4, 0), (5, 4), (4, 1)]
+cc 858c10033cdc53b6e69584e62c926beb5bc6352cc8bac7481db8fc901d3bd3f6 # shrinks to entries = [(1, 4), (0, 0)]
