@@ -196,20 +196,49 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use proptest::{prop_assert_eq, proptest};
 
-    #[test]
-    fn test() {
-        let mut trie = MaxBitSetTrie::<u8, u8>::new();
-        println!("{:?}", trie);
-        assert!(trie.insert_if_max(0b0000, 0));
-        println!("{:?}", trie);
-        assert!(trie.insert_if_max(0b0011, 2));
-        println!("{:?}", trie);
-        assert!(!trie.insert_if_max(0b0001, 1)); // 0b0001 is a subset of 0b0011 with a lower value
-        println!("{:?}", trie);
-        assert!(trie.insert_if_max(0b0001, 4)); // 0b0001 is a subset of 0b0011, but has a higher value
-        println!("{:?}", trie);
-        assert!(trie.insert_if_max(0b0011, 5));
-        println!("{:?}", trie);
+    #[derive(Debug)]
+    struct NaiveMaxBitSetTrie<K, V> {
+        pairs: Vec<(K, V)>,
+    }
+
+    impl<K, V> NaiveMaxBitSetTrie<K, V>
+    where
+        K: BitSet + Copy,
+        V: Ord + Copy,
+    {
+        fn new() -> Self {
+            Self { pairs: Vec::new() }
+        }
+
+        fn insert_if_max(&mut self, set: K, value: V) -> bool {
+            for (existing_set, existing_value) in &mut self.pairs {
+                if existing_set.is_superset(&set) && *existing_value >= value {
+                    return false;
+                }
+            }
+
+            self.pairs.push((set, value));
+            true
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn prop_insert_if_max(
+            entries in proptest::collection::vec((0..10u8, 0..10u8), 0..10),
+        ) {
+            let mut trie = MaxBitSetTrie::new();
+            let mut naive_trie = NaiveMaxBitSetTrie::new();
+
+            for (set, value) in entries {
+                prop_assert_eq!(
+                    trie.insert_if_max(set, value), naive_trie.insert_if_max(set, value),
+                    "set = {:?}, value = {:?}\ntrie = {:?}\nnaive_trie = {:?}",
+                    set, value, trie, naive_trie,
+                );
+            }
+        }
     }
 }
