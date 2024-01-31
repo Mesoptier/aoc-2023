@@ -29,44 +29,66 @@ where
         }
     }
 
-    fn insert_if_max(
-        &mut self,
-        set: &[K],
-        value: V,
-        allow_insert: bool,
-    ) -> Result<InsertResult, ()> {
-        if set.is_empty() {
-            for (_, child) in &mut self.children {
-                if let Ok(result) = child.insert_if_max(set, value, false) {
-                    return Ok(result);
+    /// Whether this node or any of its descendants contain a superset of `set` with a value greater than or equal to `value`.
+    fn supersedes(&self, set: &[K], value: V) -> bool {
+        match set.split_first() {
+            None => {
+                // This node and all of its descendants contain the empty set, so they all supersede `set`. We only need
+                // to check if any of them have a value greater than or equal to `value`.
+                if matches!(self.terminal_value, Some(v) if v >= value) {
+                    return true;
                 }
+                self.children
+                    .iter()
+                    .any(|(_, child)| child.supersedes(&[], value))
+            }
+            Some((key, remaining_set)) => {
+                for (child_key, child) in &self.children {
+                    match (*child_key).cmp(key) {
+                        Ordering::Less => {
+                            if child.supersedes(set, value) {
+                                return true;
+                            }
+                        }
+                        Ordering::Equal => {
+                            if child.supersedes(remaining_set, value) {
+                                return true;
+                            }
+                        }
+                        Ordering::Greater => break,
+                    }
+                }
+
+                false
+            }
+        }
+    }
+
+    fn insert_if_max(&mut self, set: &[K], value: V) -> Result<InsertResult, ()> {
+        if set.is_empty() {
+            if self.supersedes(&[], value) {
+                return Ok(InsertResult::Superseded);
             }
 
-            return match self.terminal_value {
-                None if allow_insert => {
-                    self.terminal_value = Some(value);
-                    Ok(InsertResult::Inserted)
-                }
-                Some(terminal_value) if terminal_value >= value => Ok(InsertResult::Superseded),
-                Some(terminal_value) if allow_insert => {
-                    debug_assert!(terminal_value < value);
-                    self.terminal_value = Some(value);
-                    Ok(InsertResult::Inserted)
-                }
-                _ => Err(()),
-            };
+            debug_assert!(
+                matches!(self.terminal_value, Some(v) if v < value)
+                    || self.terminal_value.is_none()
+            );
+
+            self.terminal_value = Some(value);
+            return Ok(InsertResult::Inserted);
         }
 
         let (key, remaining_set) = set.split_first().unwrap();
         for (child_key, child) in &mut self.children {
             match (*child_key).cmp(key) {
                 Ordering::Less => {
-                    if let Ok(result) = child.insert_if_max(set, value, false) {
-                        return Ok(result);
+                    if child.supersedes(set, value) {
+                        return Ok(InsertResult::Superseded);
                     }
                 }
                 Ordering::Equal => {
-                    if let Ok(result) = child.insert_if_max(remaining_set, value, allow_insert) {
+                    if let Ok(result) = child.insert_if_max(remaining_set, value) {
                         return Ok(result);
                     }
                 }
@@ -74,16 +96,12 @@ where
             }
         }
 
-        if allow_insert {
-            let index = self
-                .children
-                .partition_point(|(child_key, _)| *child_key < *key);
-            self.children
-                .insert(index, (*key, Self::new_branch(remaining_set, value)));
-            Ok(InsertResult::Inserted)
-        } else {
-            Err(())
-        }
+        let index = self
+            .children
+            .partition_point(|(child_key, _)| *child_key < *key);
+        self.children
+            .insert(index, (*key, Self::new_branch(remaining_set, value)));
+        Ok(InsertResult::Inserted)
     }
 }
 
@@ -109,7 +127,7 @@ where
     }
 
     pub fn insert_if_max(&mut self, set: &[K], value: V) -> bool {
-        match self.root.insert_if_max(set, value, true) {
+        match self.root.insert_if_max(set, value) {
             Ok(InsertResult::Inserted) => true,
             Ok(InsertResult::Superseded) => false,
             Err(()) => unreachable!(),
