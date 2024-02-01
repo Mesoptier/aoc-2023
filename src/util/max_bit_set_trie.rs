@@ -1,141 +1,102 @@
 use crate::util::{BitSet, ContainmentType};
 use petgraph::Graph;
+use std::fmt::Debug;
 
 #[derive(Debug)]
-struct Node<K, V> {
-    /// INVARIANT: `set` is a superset of all children's sets.
-    set: K,
-
-    /// INVARIANT: `min_value` is less than or equal to the minimum value of all valid children.
-    /// It may be less than the minimum if there is a value associated with this branch node.
+struct Node<B, V> {
+    /// The set represented by this node. For internal nodes, this is the union of the sets of the children.
+    set: B,
+    /// The value (if any) associated with the set represented by this node.
+    terminal_value: Option<V>,
+    /// The minimum value of any set represented by this node or its children.
     min_value: V,
-
-    /// INVARIANT: `max_value` is the maximum value of all children.
+    /// The maximum value of any set represented by this node or its children.
     max_value: V,
-
-    // TODO: INVARIANT: `children` is sorted by `min_value`?
-    children: Vec<Node<K, V>>,
+    children: Vec<Node<B, V>>,
 }
 
-enum InsertResult {
-    /// The value was inserted.
-    Inserted,
-    /// The value was not inserted because a superset with a higher value already exists.
-    NotInserted,
-}
-
-impl<K, V> Node<K, V>
+impl<B, V> Node<B, V>
 where
-    K: BitSet + Copy,
-    V: Ord + Copy,
+    B: BitSet + Copy + Debug,
+    V: Ord + Copy + Debug,
 {
-    fn leaf(set: K, value: V) -> Self {
-        Self {
-            set,
-            min_value: value,
-            max_value: value,
-            children: Vec::new(),
+    /// Returns `true` if this node contains a superset of `set` with a value greater than or equal to `value`.
+    fn contains_sup(&self, set: B, value: V) -> bool {
+        if self.set.is_superset(&set) {
+            if let Some(terminal_value) = self.terminal_value {
+                if terminal_value >= value {
+                    return true;
+                }
+            }
+
+            // TODO: Could probably use min/max values to prune early.
+            self.children
+                .iter()
+                .any(|child| child.contains_sup(set, value))
+        } else {
+            false
         }
     }
 
-    fn pair_branch(left: Self, right: Self) -> Self {
-        Self {
-            set: left.set.union(&right.set),
-            min_value: left.min_value.min(right.min_value),
-            max_value: left.max_value.max(right.max_value),
-            children: vec![left, right],
-        }
-    }
-
-    fn insert_if_max(&mut self, set: K, value: V) -> Result<InsertResult, ()> {
-        match set.containment_type(&self.set) {
-            // TODO: Should superset behavior be the same as equal behavior? Except also update the set.
-            ContainmentType::None | ContainmentType::Superset => Err(()),
+    /// Inserts a new (set, value) pair into the node, if possible without violating invariants. Returns `true` if the
+    /// pair was inserted.
+    fn insert(&mut self, set: B, value: V) -> bool {
+        match self.set.containment_type(&set) {
+            ContainmentType::None | ContainmentType::Subset => false,
             ContainmentType::Equal => {
-                if self.min_value >= value {
-                    // An equal set with a higher value already exists.
-                    return Ok(InsertResult::NotInserted);
-                }
-
-                if value >= self.max_value {
-                    // New set is a superset of all children and new value is greater than all children, so this node
-                    // can be replaced with a leaf.
-                    self.min_value = value;
-                    self.max_value = value;
-                    self.children.clear();
-                } else {
-                    self.min_value = value;
-
-                    let mut i = 0;
-                    while i < self.children.len() {
-                        let child = &self.children[i];
-                        if child.max_value <= value {
-                            self.children.swap_remove(i);
-                        } else if child.min_value <= value {
-                            let child = self.children.swap_remove(i);
-                            self.children.extend(child.children);
-                        } else {
-                            i += 1;
-                        }
+                match self.terminal_value {
+                    Some(terminal_value) if terminal_value < value => {
+                        self.terminal_value = Some(value);
+                        // Updating min_value is not necessary, since min_value <= terminal_value < value.
+                        // self.min_value = self.min_value.min(value);
+                        self.max_value = self.max_value.max(value);
+                        true
                     }
+                    None => {
+                        self.terminal_value = Some(value);
+                        self.min_value = self.min_value.min(value);
+                        self.max_value = self.max_value.max(value);
+                        true
+                    }
+                    _ => unreachable!(
+                        "Node::insert() called with but set already present with higher value\n{:?}", self,
+                    ),
                 }
-
-                self.assert_invariants();
-                Ok(InsertResult::Inserted)
             }
-            ContainmentType::Subset => {
-                if self.min_value >= value {
-                    // A superset with a higher value already exists.
-                    return Ok(InsertResult::NotInserted);
-                }
-
-                // Value will definitely be inserted in this subtree, so update max_value.
-                self.max_value = self.max_value.max(value);
-
-                // Try to insert into a child node.
-                for child in self.children.iter_mut() {
-                    if let Ok(result) = child.insert_if_max(set, value) {
-                        self.assert_invariants();
-                        return Ok(result);
+            ContainmentType::Superset => {
+                for child in &mut self.children {
+                    if child.insert(set, value) {
+                        self.min_value = self.min_value.min(value);
+                        self.max_value = self.max_value.max(value);
+                        return true;
                     }
                 }
 
-                // Could not insert into a child node, so add a new child.
-                self.children.push(Node::leaf(set, value));
-
-                self.assert_invariants();
-                Ok(InsertResult::Inserted)
+                self.children.push(Node {
+                    set,
+                    terminal_value: Some(value),
+                    min_value: value,
+                    max_value: value,
+                    children: Vec::new(),
+                });
+                true
             }
         }
     }
 
-    #[inline]
-    fn assert_invariants(&self) {
-        assert!(self
-            .children
-            .iter()
-            .all(|child| self.set.is_superset(&child.set)));
-        assert!(self
-            .children
-            .iter()
-            .all(|child| self.min_value <= child.min_value));
-        assert!(self
-            .children
-            .iter()
-            .all(|child| self.max_value >= child.max_value));
-    }
+    // TODO: Combine `contains_sup` and `insert` into a single function, to avoid traversing the tree twice.
 }
 
 /// Data structure that maps BitSets to values and supports querying the maximum value of supersets for a given BitSet.
 #[derive(Debug, Default)]
-pub struct MaxBitSetTrie<K, V> {
-    root: Option<Node<K, V>>,
+pub struct MaxBitSetTrie<B, V> {
+    root: Option<Node<B, V>>,
 }
 
-impl<K, V> MaxBitSetTrie<K, V>
+impl<B, V> MaxBitSetTrie<B, V>
 where
-    K: BitSet + Copy,
-    V: Ord + Copy,
+    B: BitSet + Copy + Debug,
+    V: Ord + Copy + Debug,
 {
     pub fn new() -> Self {
         Self { root: None }
@@ -143,27 +104,53 @@ where
 
     /// Inserts a new set-value pair into the trie if a superset with a higher value does not already
     /// exist. Returns `true` if the value was inserted, `false` otherwise.
-    pub fn insert_if_max(&mut self, set: K, value: V) -> bool {
-        let node = match &mut self.root {
-            None => {
-                self.root = Some(Node::leaf(set, value));
-                return true;
-            }
-            Some(node) => node,
-        };
+    pub fn insert_if_max(&mut self, set: B, value: V) -> bool {
+        if let Some(root) = &mut self.root {
+            if root.contains_sup(set, value) {
+                false
+            } else if root.insert(set, value) {
+                true
+            } else {
+                let root = self.root.take().unwrap();
 
-        match node.insert_if_max(set, value) {
-            Ok(InsertResult::Inserted) => true,
-            Ok(InsertResult::NotInserted) => false,
-            Err(()) => {
-                // Could not insert into the root node, so replace it with a branch node holding both the old root
-                // and the new pair.
-
-                let old_root = self.root.take().unwrap();
-                self.root = Some(Node::pair_branch(old_root, Node::leaf(set, value)));
+                if set.is_superset(&root.set) {
+                    self.root = Some(Node {
+                        set,
+                        terminal_value: Some(value),
+                        min_value: root.min_value.min(value),
+                        max_value: root.max_value.max(value),
+                        children: vec![root],
+                    });
+                } else {
+                    self.root = Some(Node {
+                        set: root.set.union(&set),
+                        terminal_value: None,
+                        min_value: root.min_value.min(value),
+                        max_value: root.max_value.max(value),
+                        children: vec![
+                            root,
+                            Node {
+                                set,
+                                terminal_value: Some(value),
+                                min_value: value,
+                                max_value: value,
+                                children: Vec::new(),
+                            },
+                        ],
+                    });
+                }
 
                 true
             }
+        } else {
+            self.root = Some(Node {
+                set,
+                terminal_value: Some(value),
+                min_value: value,
+                max_value: value,
+                children: Vec::new(),
+            });
+            true
         }
     }
 }
