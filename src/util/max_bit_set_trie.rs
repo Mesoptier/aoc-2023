@@ -109,53 +109,57 @@ where
     /// Inserts a new set-value pair into the trie if a superset with a higher value does not already
     /// exist. Returns `true` if the value was inserted, `false` otherwise.
     pub fn insert_if_max(&mut self, set: B, value: V) -> bool {
-        if let Some(root) = &mut self.root {
-            if root.contains_sup(set, value) {
-                false
-            } else if root.insert(set, value) {
-                true
-            } else {
-                let root = self.root.take().unwrap();
-
-                if set.is_superset(&root.set) {
-                    self.root = Some(Node {
-                        set,
-                        terminal_value: Some(value),
-                        min_value: root.min_value.min(value),
-                        max_value: root.max_value.max(value),
-                        children: vec![root],
-                    });
-                } else {
-                    self.root = Some(Node {
-                        set: root.set.union(&set),
-                        terminal_value: None,
-                        min_value: root.min_value.min(value),
-                        max_value: root.max_value.max(value),
-                        children: vec![
-                            root,
-                            Node {
-                                set,
-                                terminal_value: Some(value),
-                                min_value: value,
-                                max_value: value,
-                                children: Vec::new(),
-                            },
-                        ],
-                    });
-                }
-
-                true
+        let root = match self.root {
+            None => {
+                self.root = Some(Node {
+                    set,
+                    terminal_value: Some(value),
+                    min_value: value,
+                    max_value: value,
+                    children: Vec::new(),
+                });
+                return true;
             }
-        } else {
+            Some(ref mut root) => root,
+        };
+
+        if root.contains_sup(set, value) {
+            return false;
+        }
+        if root.insert(set, value) {
+            return true;
+        }
+
+        // New pair could not be inserted into the root node, so we need to create a new root node.
+        let root = self.root.take().unwrap();
+        if set.is_superset(&root.set) {
             self.root = Some(Node {
                 set,
                 terminal_value: Some(value),
-                min_value: value,
-                max_value: value,
-                children: Vec::new(),
+                min_value: root.min_value.min(value),
+                max_value: root.max_value.max(value),
+                children: vec![root],
             });
-            true
+        } else {
+            self.root = Some(Node {
+                set: root.set.union(&set),
+                terminal_value: None,
+                min_value: root.min_value.min(value),
+                max_value: root.max_value.max(value),
+                children: vec![
+                    root,
+                    Node {
+                        set,
+                        terminal_value: Some(value),
+                        min_value: value,
+                        max_value: value,
+                        children: Vec::new(),
+                    },
+                ],
+            });
         }
+
+        true
     }
 }
 
