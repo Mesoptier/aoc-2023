@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc 482456aafeec583a87c22004a13179a3a41b731cf5b65a7eea2bde44e6a9721f # shrinks to entries = [(4, 0), (5, 4), (4, 1)]
 cc 69bf43856ce43239dec6c87a48e2fd009c3d78749376e9fa3ff24e2dc6059ef9 # shrinks to entries = [(5, 0), (4, 3), (4, 1)]
+cc bea9b4a3832a4892e2705903ba7998c3c68b79b80c847008b85ab3c4b8e07192 # shrinks to entries = [(7, 0), (5, 7), (0, 1)]

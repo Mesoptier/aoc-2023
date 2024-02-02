@@ -23,13 +23,16 @@ where
     /// Returns `true` if this node contains a superset of `set` with a value greater than or equal to `value`.
     fn contains_sup(&self, set: B, value: V) -> bool {
         if self.set.is_superset(&set) {
+            if value > self.max_value {
+                return false;
+            }
+
             if let Some(terminal_value) = self.terminal_value {
                 if terminal_value >= value {
                     return true;
                 }
             }
 
-            // TODO: Could probably use min/max values to prune early.
             self.children
                 .iter()
                 .any(|child| child.contains_sup(set, value))
@@ -64,10 +67,11 @@ where
                 }
             }
             ContainmentType::Superset => {
+                self.min_value = self.min_value.min(value);
+                self.max_value = self.max_value.max(value);
+
                 for child in &mut self.children {
                     if child.insert(set, value) {
-                        self.min_value = self.min_value.min(value);
-                        self.max_value = self.max_value.max(value);
                         return true;
                     }
                 }
