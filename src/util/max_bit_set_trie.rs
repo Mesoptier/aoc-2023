@@ -163,7 +163,32 @@ where
     }
 }
 
-impl<K, V> From<&MaxBitSetTrie<K, V>> for Graph<(K, V), ()>
+#[derive(Debug)]
+pub struct NodeInfo<K, V> {
+    pub set: K,
+    pub min_value: V,
+    pub max_value: V,
+    pub terminal_value: Option<V>,
+    pub num_children: usize,
+}
+
+impl<K, V> From<&Node<K, V>> for NodeInfo<K, V>
+where
+    K: BitSet + Copy,
+    V: Ord + Copy,
+{
+    fn from(node: &Node<K, V>) -> Self {
+        Self {
+            set: node.set,
+            min_value: node.min_value,
+            max_value: node.max_value,
+            terminal_value: node.terminal_value,
+            num_children: node.children.len(),
+        }
+    }
+}
+
+impl<K, V> From<&MaxBitSetTrie<K, V>> for Graph<NodeInfo<K, V>, ()>
 where
     K: BitSet + Copy,
     V: Ord + Copy,
@@ -172,12 +197,12 @@ where
         let mut graph = Graph::new();
 
         if let Some(root) = &trie.root {
-            let root_index = graph.add_node((root.set, root.min_value));
+            let root_index = graph.add_node(NodeInfo::from(root));
             let mut stack = vec![(root_index, root)];
 
             while let Some((parent_index, parent)) = stack.pop() {
                 for child in &parent.children {
-                    let child_index = graph.add_node((child.set, child.min_value));
+                    let child_index = graph.add_node(NodeInfo::from(child));
                     graph.add_edge(parent_index, child_index, ());
                     stack.push((child_index, child));
                 }
