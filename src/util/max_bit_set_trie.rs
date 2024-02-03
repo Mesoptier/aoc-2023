@@ -45,7 +45,17 @@ where
     /// pair was inserted.
     fn insert(&mut self, set: B, value: V) -> bool {
         match self.set.containment_type(&set) {
-            ContainmentType::None | ContainmentType::Subset => false,
+            ContainmentType::None => false,
+            ContainmentType::Subset | ContainmentType::Equal if self.max_value <= value => {
+                *self = Node {
+                    set,
+                    terminal_value: Some(value),
+                    min_value: value,
+                    max_value: value,
+                    children: Vec::new(),
+                };
+                true
+            }
             ContainmentType::Equal => {
                 match self.terminal_value {
                     Some(terminal_value) if terminal_value < value => {
@@ -85,6 +95,7 @@ where
                 });
                 true
             }
+            _ => false,
         }
     }
 
