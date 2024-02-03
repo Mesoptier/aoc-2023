@@ -12,6 +12,7 @@ struct Node<B, V> {
     min_value: V,
     /// The maximum value of any set represented by this node or its children.
     max_value: V,
+    /// The children of this node. Ordered by max_value.
     children: Vec<Node<B, V>>,
 }
 
@@ -33,9 +34,16 @@ where
                 }
             }
 
-            self.children
-                .iter()
-                .any(|child| child.contains_sup(set, value))
+            let max_child_index = self
+                .children
+                .partition_point(|child| child.max_value >= value);
+            for child in &self.children[..max_child_index] {
+                if child.contains_sup(set, value) {
+                    return true;
+                }
+            }
+
+            false
         } else {
             false
         }
@@ -77,22 +85,46 @@ where
                 }
             }
             ContainmentType::Superset => {
+                let new_child_index = self
+                    .children
+                    .partition_point(|child| child.max_value >= value);
+
                 self.min_value = self.min_value.min(value);
                 self.max_value = self.max_value.max(value);
 
-                for child in &mut self.children {
+                for (child_index, child) in &mut self.children.iter_mut().enumerate() {
                     if child.insert(set, value) {
+                        assert!(child.max_value >= value);
+
+                        // Update position of child in children, if necessary.
+                        if value == child.max_value {
+                            // TODO: Use in-place slice rotation to avoid moving elements twice.
+                            match child_index.cmp(&new_child_index) {
+                                std::cmp::Ordering::Greater => {
+                                    let child = self.children.remove(child_index);
+                                    self.children.insert(new_child_index, child);
+                                }
+                                std::cmp::Ordering::Less => {
+                                    let child = self.children.remove(child_index);
+                                    self.children.insert(new_child_index - 1, child);
+                                }
+                                std::cmp::Ordering::Equal => {}
+                            }
+                        }
                         return true;
                     }
                 }
 
-                self.children.push(Node {
-                    set,
-                    terminal_value: Some(value),
-                    min_value: value,
-                    max_value: value,
-                    children: Vec::new(),
-                });
+                self.children.insert(
+                    new_child_index,
+                    Node {
+                        set,
+                        terminal_value: Some(value),
+                        min_value: value,
+                        max_value: value,
+                        children: Vec::new(),
+                    },
+                );
                 true
             }
             _ => false,
@@ -168,6 +200,11 @@ where
                     },
                 ],
             });
+            self.root
+                .as_mut()
+                .unwrap()
+                .children
+                .sort_by_key(|child| std::cmp::Reverse(child.max_value));
         }
 
         true
