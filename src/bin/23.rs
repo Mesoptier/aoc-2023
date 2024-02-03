@@ -128,45 +128,48 @@ fn solve(input: &str, part_two: bool) -> Option<Cost> {
         );
     }
 
-    cache.cache.iter().for_each(|(node, cache)| {
-        use std::io::Write;
+    let debug = false;
+    if debug {
+        cache.cache.iter().for_each(|(node, cache)| {
+            use std::io::Write;
 
-        let mut file = File::create(format!("data/viz/dot/23-2-cache_{}.dot", node)).unwrap();
-        let cache_graph = Graph::from(cache);
-        writeln!(
-            file,
-            "{:?}",
-            Dot::with_attr_getters(
-                &cache_graph,
-                &[Config::EdgeNoLabel, Config::NodeNoLabel],
-                &|_, _| String::new(),
-                &|_, (_, node)| format!(
-                    "label=\"{:32b}\\lval: {}-{}, deg: {}\", shape={}",
-                    node.set,
-                    node.min_value,
-                    node.max_value,
-                    node.num_children,
-                    if node.terminal_value.is_none() {
-                        "house"
-                    } else {
-                        "box"
-                    }
-                ),
+            let mut file = File::create(format!("data/viz/dot/23-2-cache_{}.dot", node)).unwrap();
+            let cache_graph = Graph::from(cache);
+            writeln!(
+                file,
+                "{:?}",
+                Dot::with_attr_getters(
+                    &cache_graph,
+                    &[Config::EdgeNoLabel, Config::NodeNoLabel],
+                    &|_, _| String::new(),
+                    &|_, (_, node)| format!(
+                        "label=\"{:32b}\\lval: {}-{}, deg: {}\", shape={}",
+                        node.set,
+                        node.min_value,
+                        node.max_value,
+                        node.num_children,
+                        if node.terminal_value.is_none() {
+                            "house"
+                        } else {
+                            "box"
+                        }
+                    ),
+                )
             )
-        )
-        .unwrap();
-
-        // Run dot to generate SVG
-        std::process::Command::new("dot")
-            .args([
-                "-Tsvg",
-                format!("data/viz/dot/23-2-cache_{}.dot", node).as_str(),
-                "-o",
-                format!("data/viz/svg/23-2-cache_{}.svg", node).as_str(),
-            ])
-            .output()
             .unwrap();
-    });
+
+            // Run dot to generate SVG
+            std::process::Command::new("dot")
+                .args([
+                    "-Tsvg",
+                    format!("data/viz/dot/23-2-cache_{}.dot", node).as_str(),
+                    "-o",
+                    format!("data/viz/svg/23-2-cache_{}.svg", node).as_str(),
+                ])
+                .output()
+                .unwrap();
+        });
+    }
 
     // let cache_graph = Graph::from(&cache.cache[0]);
     // println!(
