@@ -10,7 +10,7 @@ use petgraph::dot::{Config, Dot};
 use petgraph::visit::EdgeRef;
 use petgraph::Graph;
 
-use advent_of_code::util::{BitSet, Indexer, LinearIndexer, MaxBitSetTrie, VecTable};
+use advent_of_code::util::{BitSet, Indexer, LinearIndexer, MaxSubSetTrie, VecTable};
 
 use crate::tile_grid::Tile;
 
@@ -128,7 +128,7 @@ fn solve(input: &str, part_two: bool) -> Option<Cost> {
         );
     }
 
-    let debug = false;
+    let debug = true;
     if debug {
         cache.cache.iter().for_each(|(node, cache)| {
             use std::io::Write;
@@ -141,17 +141,15 @@ fn solve(input: &str, part_two: bool) -> Option<Cost> {
                 Dot::with_attr_getters(
                     &cache_graph,
                     &[Config::EdgeNoLabel, Config::NodeNoLabel],
-                    &|_, _| String::new(),
+                    &|_, edge| format!("label=\"{}\"", edge.weight()),
                     &|_, (_, node)| format!(
-                        "label=\"{:32b}\\lval: {}-{}, deg: {}\", shape={}",
-                        node.set,
-                        node.min_value,
-                        node.max_value,
-                        node.num_children,
+                        "label=\"val: {}, deg: {}\", shape={}",
+                        node.terminal_value.unwrap_or(0),
+                        node.degree,
                         if node.terminal_value.is_none() {
-                            "house"
+                            "ellipse"
                         } else {
-                            "box"
+                            "rectangle"
                         }
                     ),
                 )
@@ -536,7 +534,7 @@ mod graph {
 }
 
 struct Cache {
-    cache: VecTable<NodeIndex, MaxBitSetTrie<u32, u32>, LinearIndexer<NodeIndex>>,
+    cache: VecTable<NodeIndex, MaxSubSetTrie<u32, u32>, LinearIndexer<NodeIndex>>,
 }
 
 impl Cache {
@@ -550,7 +548,7 @@ impl Cache {
     /// Returns `true` if the new cost was inserted, `false` otherwise.
     fn insert_if_max(&mut self, node: NodeIndex, reachable: u32, cost: u32) -> bool {
         let cache = &mut self.cache[node];
-        cache.insert_if_max(reachable, cost)
+        cache.insert_if_max(!reachable, cost)
     }
 }
 

@@ -1,3 +1,5 @@
+use num::Num;
+
 pub enum ContainmentType {
     /// `self` is both a subset and a superset of `other`.
     Equal,
@@ -11,7 +13,7 @@ pub enum ContainmentType {
 
 pub trait BitSet: Sized + Eq {
     /// The type used to index into the bit set.
-    type Index;
+    type Index: Copy + Num + Ord;
 
     /// Sets the bit at `index` to `true`.
     fn set(&mut self, index: Self::Index);
@@ -69,6 +71,18 @@ pub trait BitSet: Sized + Eq {
             (true, false) => ContainmentType::Subset,
             (false, true) => ContainmentType::Superset,
             (false, false) => ContainmentType::None,
+        }
+    }
+
+    /// Returns the index of the first `true` bit in the set, or `None` if the set is empty.
+    fn first(&self) -> Option<Self::Index>;
+
+    fn pop(&mut self) -> Option<Self::Index> {
+        if let Some(index) = self.first() {
+            self.clear(index);
+            Some(index)
+        } else {
+            None
         }
     }
 }
@@ -146,6 +160,15 @@ macro_rules! impl_bitset {
             #[inline]
             fn is_superset(&self, other: &$t) -> bool {
                 self & other == *other
+            }
+
+            #[inline]
+            fn first(&self) -> Option<$t> {
+                if *self == 0 {
+                    None
+                } else {
+                    Some(self.trailing_zeros() as $t)
+                }
             }
         }
     )*)
