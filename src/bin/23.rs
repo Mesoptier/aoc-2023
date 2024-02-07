@@ -144,8 +144,33 @@ fn build_trails_map(input: &str, part_two: bool) -> (AdjacencyList, NodeIndex, N
         .unwrap();
 
     let graph = graph::build_graph(tile_grid, start_coord, target_coord, part_two);
+
+    let part = if part_two { 2 } else { 1 };
+    let engine = if part_two { "neato" } else { "dot" };
+    if cfg!(feature = "debug_output") {
+        graph::print_graph(
+            &graph.clone().into_graph().map(
+                |_, coord| format!("({}, {})", coord.x, coord.y),
+                |_, cost| *cost,
+            ),
+            &format!("23-{}", part),
+            engine,
+        );
+    }
+
     let (graph, start_node, target_node) =
         graph::optimize_graph(graph, start_coord, target_coord, part_two);
+
+    if cfg!(feature = "debug_output") {
+        graph::print_graph(
+            &graph.map(
+                |node_index, _| format!("{}", node_index.index()),
+                |_, cost| *cost,
+            ),
+            &format!("23-{}-opt", part),
+            engine,
+        );
+    }
 
     // Convert to a VecTable
     let adj_list_data = graph
@@ -275,6 +300,7 @@ mod graph {
     use std::collections::{HashMap, VecDeque};
 
     use arrayvec::ArrayVec;
+    use itertools::Itertools;
     use petgraph::graph::{DiGraph, NodeIndex};
     use petgraph::graphmap::DiGraphMap;
 
@@ -424,18 +450,40 @@ mod graph {
         part_two: bool,
     ) -> (DiGraph<(), Cost>, NodeIndex, NodeIndex) {
         let start_coord = if part_two {
+            // Merge start node into the first intersection node
             merge_into_single_neighbor(&mut graph, start_coord)
         } else {
             start_coord
         };
+        // Remove incoming edges to start node, since the path can never return to it
         remove_incoming_edges(&mut graph, start_coord);
 
         let target_coord = if part_two {
+            // Merge target node into the last intersection node
             merge_into_single_neighbor(&mut graph, target_coord)
         } else {
             target_coord
         };
+        // Remove outgoing edges from target node, since the path can never leave it
         remove_outgoing_edges(&mut graph, target_coord);
+
+        if part_two {
+            for node in graph
+                .neighbors_directed(start_coord, petgraph::Direction::Outgoing)
+                .collect_vec()
+            {
+                // Follow the perimeter of the graph, removing all edges moving away from the target node
+                let mut node = node;
+                while node != target_coord {
+                    let next_node = graph
+                        .neighbors_directed(node, petgraph::Direction::Outgoing)
+                        .find(|&neighbor| graph.neighbors(neighbor).count() <= 3)
+                        .unwrap();
+                    graph.remove_edge(next_node, node);
+                    node = next_node;
+                }
+            }
+        }
 
         let node_index_map = {
             // Sort nodes so start and target nodes are at the end
@@ -471,6 +519,25 @@ mod graph {
         assert_eq!(target_node.index(), graph.node_count() - 1);
 
         (graph, start_node, target_node)
+    }
+
+    pub fn print_graph(graph: &DiGraph<String, Cost>, name: &str, engine: &str) {
+        use std::io::Write;
+
+        let mut file = std::fs::File::create(format!("data/viz/{}.dot", name)).unwrap();
+        write!(file, "{}", petgraph::dot::Dot::new(&graph)).unwrap();
+
+        // Run dot to generate SVG
+        std::process::Command::new("dot")
+            .args([
+                "-Tsvg",
+                format!("data/viz/{}.dot", name).as_str(),
+                "-o",
+                format!("data/viz/{}.svg", name).as_str(),
+                format!("-K{}", engine).as_str(),
+            ])
+            .output()
+            .unwrap();
     }
 }
 
