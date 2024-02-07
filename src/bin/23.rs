@@ -1,11 +1,10 @@
 #![feature(portable_simd)]
 
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
 use std::ops::BitAnd;
 use std::simd::prelude::*;
 
 use arrayvec::ArrayVec;
+use itertools::izip;
 use petgraph::visit::EdgeRef;
 
 use advent_of_code::util::{BitSet, Indexer, LinearIndexer, VecTable};
@@ -110,16 +109,10 @@ fn solve(input: &str, part_two: bool) -> Option<Cost> {
             continue;
         }
 
-        // Prune the path if we've already found a path to this node that's at least as long and can still reach the
-        // same set of nodes.
-        match cache.entry(node, reachable) {
-            Entry::Occupied(entry) if *entry.get() >= path_cost => continue,
-            Entry::Occupied(mut entry) => {
-                entry.insert(path_cost);
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(path_cost);
-            }
+        // Prune the path if we've already found a path to this node that can still reach the same set (or a superset!)
+        // of nodes at a better cost.
+        if !cache.insert_if_max(node, reachable, path_cost) {
+            continue;
         }
 
         visited.set(node);
@@ -482,7 +475,7 @@ mod graph {
 }
 
 struct Cache {
-    cache: VecTable<NodeIndex, HashMap<u32, u32>, LinearIndexer<NodeIndex>>,
+    cache: VecTable<NodeIndex, (Vec<u32>, Vec<u32>), LinearIndexer<NodeIndex>>,
 }
 
 impl Cache {
@@ -492,16 +485,53 @@ impl Cache {
         }
     }
 
-    fn get(&self, node: NodeIndex, reachable: u32) -> Option<u32> {
-        self.cache[node].get(&reachable).copied()
-    }
+    /// Inserts a new (node, bitset)-value pair into the cache if a pair with a superset bitset and a higher value is
+    /// not already present.
+    ///
+    /// Returns `true` if the new value was inserted.
+    fn insert_if_max(&mut self, node: NodeIndex, query_bitset: u32, query_value: u32) -> bool {
+        let (bitsets, values) = &self.cache[node];
+        assert_eq!(bitsets.len(), values.len());
 
-    fn insert(&mut self, node: NodeIndex, reachable: u32, steps: u32) {
-        self.cache[node].insert(reachable, steps);
-    }
+        const LANES: usize = 32;
 
-    fn entry(&mut self, node: NodeIndex, reachable: u32) -> Entry<u32, u32> {
-        self.cache[node].entry(reachable)
+        // Process existing entries in reverse order so newer (and thus superseding) entries are processed first.
+        // TODO: Could we instead replace superseded entries with the new entry?
+        let bitsets = bitsets.rchunks_exact(LANES);
+        let values = values.rchunks_exact(LANES);
+
+        let bitsets_remainder = bitsets.remainder();
+        let values_remainder = values.remainder();
+
+        let query_bitsets = Simd::<u32, LANES>::splat(query_bitset);
+        let query_values = Simd::<u32, LANES>::splat(query_value);
+
+        for (bitsets, values) in izip!(bitsets, values) {
+            let bitsets = Simd::<u32, LANES>::from_slice(bitsets);
+            let values = Simd::<u32, LANES>::from_slice(values);
+
+            // bitset & query_bitset == query_bitset (i.e. query_bitset is a subset of bitset)
+            let mask = (bitsets & query_bitsets).simd_eq(query_bitsets);
+
+            // value >= query_value
+            let mask = mask & values.simd_ge(query_values);
+
+            if mask.any() {
+                return false;
+            }
+        }
+
+        for (&bitset, &value) in izip!(bitsets_remainder, values_remainder) {
+            if bitset & query_bitset == query_bitset && value >= query_value {
+                return false;
+            }
+        }
+
+        // Insert the new pair
+        let (bitsets, values) = &mut self.cache[node];
+        bitsets.push(query_bitset);
+        values.push(query_value);
+        true
     }
 }
 
