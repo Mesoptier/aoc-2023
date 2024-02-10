@@ -2,7 +2,7 @@ use std::iter;
 
 use itertools::Itertools;
 use nom::bytes::complete::tag;
-use nom::character::complete::{digit1, line_ending, one_of, space1};
+use nom::character::complete::{digit1, one_of, space1};
 use nom::combinator::{map_opt, map_res};
 use nom::multi::{many1, separated_list1};
 use nom::sequence::separated_pair;
@@ -28,15 +28,33 @@ impl SpringCondition {
     }
 }
 
-fn parse_input(input: &str) -> IResult<&str, Vec<(Vec<SpringCondition>, Vec<usize>)>> {
-    separated_list1(
-        line_ending,
-        separated_pair(
-            many1(map_opt(one_of(".#?"), SpringCondition::from_char)),
-            space1,
-            separated_list1(tag(","), map_res(digit1, str::parse)),
-        ),
-    )(input)
+fn parse_line(input: &str, repeat: usize) -> IResult<&str, (Vec<SpringCondition>, Vec<usize>)> {
+    let (input, (row, damaged_groups)) = separated_pair(
+        many1(map_opt(one_of(".#?"), SpringCondition::from_char)),
+        space1,
+        separated_list1(tag(","), map_res(digit1, str::parse)),
+    )(input)?;
+
+    if repeat == 1 {
+        return Ok((input, (row, damaged_groups)));
+    }
+
+    let row_len = (row.len() + 1) * repeat - 1;
+    let row = row
+        .into_iter()
+        .chain(iter::once(SpringCondition::Unknown))
+        .cycle()
+        .take(row_len)
+        .collect_vec();
+
+    let damaged_groups_len = damaged_groups.len() * repeat;
+    let damaged_groups = damaged_groups
+        .into_iter()
+        .cycle()
+        .take(damaged_groups_len)
+        .collect_vec();
+
+    Ok((input, (row, damaged_groups)))
 }
 
 fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usize {
@@ -93,32 +111,20 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
     cache_row[row.len()]
 }
 
-pub fn part_one(input: &str) -> Option<usize> {
-    let (_, records) = parse_input(input).unwrap();
-
-    records
-        .into_iter()
+fn solve(input: &str, repeat: usize) -> Option<usize> {
+    input
+        .lines()
+        .map(|line| parse_line(line, repeat).unwrap().1)
         .map(|(row, damaged_groups)| count_arrangements(&row, &damaged_groups))
         .sum1()
 }
 
-pub fn part_two(input: &str) -> Option<usize> {
-    let (_, records) = parse_input(input).unwrap();
+pub fn part_one(input: &str) -> Option<usize> {
+    solve(input, 1)
+}
 
-    records
-        .into_iter()
-        .map(|(row, damaged_groups)| {
-            (
-                iter::repeat(row)
-                    .take(5)
-                    .intersperse(vec![SpringCondition::Unknown])
-                    .flatten()
-                    .collect_vec(),
-                iter::repeat(damaged_groups).take(5).flatten().collect_vec(),
-            )
-        })
-        .map(|(row, damaged_groups)| count_arrangements(&row, &damaged_groups))
-        .sum1()
+pub fn part_two(input: &str) -> Option<usize> {
+    solve(input, 5)
 }
 
 #[cfg(test)]
