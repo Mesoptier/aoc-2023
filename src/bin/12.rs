@@ -129,6 +129,21 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
         }
     }
 
+    // // Print the cache for debugging.
+    // for j in 0..=damaged_groups.len() {
+    //     for i in 0..=row.len() {
+    //         print!(
+    //             "{:4} ",
+    //             match cache[(i, j)] {
+    //                 0 => "".to_string(),
+    //                 x => x.to_string(),
+    //             }
+    //         );
+    //     }
+    //     println!();
+    // }
+    // println!();
+
     cache[(row.len(), damaged_groups.len())]
 }
 
