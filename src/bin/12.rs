@@ -29,22 +29,22 @@ impl SpringCondition {
 }
 
 fn parse_line(input: &str, repeat: usize) -> IResult<&str, (Vec<SpringCondition>, Vec<usize>)> {
-    let (input, (row, damaged_groups)) = separated_pair(
+    let (input, (springs, damaged_groups)) = separated_pair(
         many1(map_opt(one_of(".#?"), SpringCondition::from_char)),
         space1,
         separated_list1(tag(","), map_res(digit1, str::parse)),
     )(input)?;
 
     if repeat == 1 {
-        return Ok((input, (row, damaged_groups)));
+        return Ok((input, (springs, damaged_groups)));
     }
 
-    let row_len = (row.len() + 1) * repeat - 1;
-    let row = row
+    let springs_len = (springs.len() + 1) * repeat - 1;
+    let springs = springs
         .into_iter()
         .chain(iter::once(SpringCondition::Unknown))
         .cycle()
-        .take(row_len)
+        .take(springs_len)
         .collect_vec();
 
     let damaged_groups_len = damaged_groups.len() * repeat;
@@ -54,19 +54,19 @@ fn parse_line(input: &str, repeat: usize) -> IResult<&str, (Vec<SpringCondition>
         .take(damaged_groups_len)
         .collect_vec();
 
-    Ok((input, (row, damaged_groups)))
+    Ok((input, (springs, damaged_groups)))
 }
 
-fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usize {
-    let mut cache_row = vec![0; row.len() + 1];
-    let mut prev_cache_row = vec![0; row.len() + 1];
+fn count_arrangements(springs: &[SpringCondition], damaged_groups: &[usize]) -> usize {
+    let mut cache_row = vec![0; springs.len() + 1];
+    let mut prev_cache_row = vec![0; springs.len() + 1];
 
     // Initialize base case.
     cache_row[0] = 1;
 
     // Initialize first row.
-    for i in 1..=row.len() {
-        if row[i - 1] == SpringCondition::Damaged {
+    for i in 1..=springs.len() {
+        if springs[i - 1] == SpringCondition::Damaged {
             break;
         }
         cache_row[i] = 1;
@@ -80,14 +80,14 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
 
         let mut last_undamaged_i = 0;
 
-        for i in 1..=row.len() {
+        for i in 1..=springs.len() {
             cache_row[i] = 0;
 
-            if row[i - 1] != SpringCondition::Damaged {
+            if springs[i - 1] != SpringCondition::Damaged {
                 cache_row[i] += cache_row[i - 1];
             }
 
-            if row[i - 1] != SpringCondition::Operational {
+            if springs[i - 1] != SpringCondition::Operational {
                 // Number of (potentially) damaged springs at the end of `row[..i]`.
                 let damaged_suffix_len = i - last_undamaged_i;
 
@@ -97,7 +97,7 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
                     if damaged_group_len == i {
                         // Damaged group spans the entire row up to this point.
                         cache_row[i] += prev_cache_row[0];
-                    } else if row[i - damaged_group_len - 1] != SpringCondition::Damaged {
+                    } else if springs[i - damaged_group_len - 1] != SpringCondition::Damaged {
                         // Damaged group is preceded by at least one operational spring.
                         cache_row[i] += prev_cache_row[i - damaged_group_len - 1];
                     }
@@ -108,14 +108,14 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
         }
     }
 
-    cache_row[row.len()]
+    cache_row[springs.len()]
 }
 
 fn solve(input: &str, repeat: usize) -> Option<usize> {
     input
         .lines()
         .map(|line| parse_line(line, repeat).unwrap().1)
-        .map(|(row, damaged_groups)| count_arrangements(&row, &damaged_groups))
+        .map(|(springs, damaged_groups)| count_arrangements(&springs, &damaged_groups))
         .sum1()
 }
 
