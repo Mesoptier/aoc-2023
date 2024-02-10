@@ -56,6 +56,9 @@ fn count_arrangements(springs: &[SpringCondition], damaged_groups: &[usize]) -> 
     let mut cache_row = vec![0; springs.len() + 1];
     let mut prev_cache_row = vec![0; springs.len() + 1];
 
+    let mut cache_row = cache_row.as_mut_slice();
+    let mut prev_cache_row = prev_cache_row.as_mut_slice();
+
     // Initialize base case.
     cache_row[0] = 1;
 
