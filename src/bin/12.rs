@@ -64,70 +64,72 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
         },
     );
 
-    for j in (0..=damaged_groups.len()).rev() {
-        // Number of (potentially) damaged springs at the beginning of the row.
-        let mut damaged_prefix = 0;
+    // Initialize base case.
+    cache[(0, 0)] = 1;
 
-        for i in (0..=row.len()).rev() {
-            let row = &row[i..];
-            let damaged_groups = &damaged_groups[j..];
+    // Initialize first row.
+    for i in 1..=row.len() {
+        cache[(i, 0)] = match row[i - 1] {
+            SpringCondition::Damaged => 0,
+            _ => cache[(i - 1, 0)],
+        };
+    }
 
-            if row.is_empty() {
-                cache.insert(&(i, j), if damaged_groups.is_empty() { 1 } else { 0 });
-                continue;
+    for j in 1..=damaged_groups.len() {
+        // Initialize first column.
+        cache[(0, j)] = 0;
+
+        // Length of the current damaged group we are considering.
+        let cur_damaged_group_len = damaged_groups[j - 1];
+
+        // Number of (potentially) damaged springs at the end of `row[..i]`.
+        let mut damaged_suffix = 0;
+
+        for i in 1..=row.len() {
+            let cur_spring = row[i - 1];
+
+            // Maintain the `damaged_suffix` count.
+            match cur_spring {
+                SpringCondition::Damaged | SpringCondition::Unknown => damaged_suffix += 1,
+                SpringCondition::Operational => damaged_suffix = 0,
             }
 
-            // Maintain the number of damaged springs at the beginning of the row.
-            match row[0] {
-                SpringCondition::Damaged | SpringCondition::Unknown => damaged_prefix += 1,
-                SpringCondition::Operational => damaged_prefix = 0,
-            }
-
-            if damaged_groups.is_empty() {
-                if row[0] == SpringCondition::Damaged {
-                    cache.insert(&(i, j), 0);
-                    continue;
-                }
-                cache.insert(&(i, j), *cache.get(&(i + 1, j)));
-                continue;
-            }
-
-            if damaged_groups[0] > row.len() {
+            if cur_damaged_group_len > i {
                 // Not enough space for the damaged group.
-                cache.insert(&(i, j), 0);
+                cache[(i, j)] = 0;
                 continue;
             }
 
             let mut num_arrangements = 0;
 
-            if damaged_prefix >= damaged_groups[0] {
-                // A damaged group could start here.
+            if damaged_suffix >= cur_damaged_group_len {
+                // A damaged group could end here.
 
-                if row.len() == damaged_groups[0] {
-                    // Damaged group spans the entire row.
-                    cache.insert(&(i, j), *cache.get(&(i + damaged_groups[0], j + 1)));
+                if cur_damaged_group_len == i {
+                    // Damaged group spans the entire row up to this point.
+                    cache[(i, j)] = cache[(0, j - 1)];
                     continue;
                 }
 
-                if row[damaged_groups[0]] != SpringCondition::Damaged {
-                    // Damaged group is followed by at least one operational spring.
-                    num_arrangements += cache.get(&(i + damaged_groups[0] + 1, j + 1))
+                if row[i - cur_damaged_group_len - 1] != SpringCondition::Damaged {
+                    // Damaged group is preceded by at least one operational spring.
+                    num_arrangements += cache[(i - cur_damaged_group_len - 1, j - 1)];
                 }
-            } else if row[0] == SpringCondition::Damaged {
-                // First damaged spring must be part of the first damaged group.
-                cache.insert(&(i, j), 0);
+            } else if cur_spring == SpringCondition::Damaged {
+                // Damaged spring must be part of a damaged group, but no damaged group ends here.
+                cache[(i, j)] = 0;
                 continue;
             }
 
-            if row[0] != SpringCondition::Damaged {
-                num_arrangements += cache.get(&(i + 1, j));
+            if cur_spring != SpringCondition::Damaged {
+                num_arrangements += cache[(i - 1, j)];
             }
 
-            cache.insert(&(i, j), num_arrangements);
+            cache[(i, j)] = num_arrangements;
         }
     }
 
-    *cache.get(&(0, 0))
+    cache[(row.len(), damaged_groups.len())]
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
