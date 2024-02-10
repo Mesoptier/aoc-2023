@@ -1,6 +1,5 @@
 use std::iter;
 
-use advent_of_code::util::{Indexer, VecTable};
 use itertools::Itertools;
 use nom::bytes::complete::tag;
 use nom::character::complete::{digit1, line_ending, one_of, space1};
@@ -40,47 +39,26 @@ fn parse_input(input: &str) -> IResult<&str, Vec<(Vec<SpringCondition>, Vec<usiz
     )(input)
 }
 
-struct CacheIndexer {
-    width: usize,
-    height: usize,
-}
-
-impl Indexer<(usize, usize)> for CacheIndexer {
-    fn len(&self) -> usize {
-        self.width * self.height
-    }
-
-    fn index_for(&self, (x, y): &(usize, usize)) -> usize {
-        y * self.width + x
-    }
-}
-
 fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usize {
-    let mut cache = VecTable::with_default(
-        usize::MAX,
-        CacheIndexer {
-            width: row.len() + 1,
-            height: damaged_groups.len() + 1,
-        },
-    );
+    let mut cache_row = vec![0; row.len() + 1];
+    let mut prev_cache_row = vec![0; row.len() + 1];
 
     // Initialize base case.
-    cache[(0, 0)] = 1;
+    cache_row[0] = 1;
 
     // Initialize first row.
     for i in 1..=row.len() {
-        cache[(i, 0)] = match row[i - 1] {
-            SpringCondition::Damaged => 0,
-            _ => cache[(i - 1, 0)],
-        };
+        if row[i - 1] == SpringCondition::Damaged {
+            break;
+        }
+        cache_row[i] = 1;
     }
 
-    for j in 1..=damaged_groups.len() {
-        // Initialize first column.
-        cache[(0, j)] = 0;
+    for &cur_damaged_group_len in damaged_groups {
+        std::mem::swap(&mut cache_row, &mut prev_cache_row);
 
-        // Length of the current damaged group we are considering.
-        let cur_damaged_group_len = damaged_groups[j - 1];
+        // Initialize first column.
+        cache_row[0] = 0;
 
         // Number of (potentially) damaged springs at the end of `row[..i]`.
         let mut damaged_suffix = 0;
@@ -96,7 +74,7 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
 
             if cur_damaged_group_len > i {
                 // Not enough space for the damaged group.
-                cache[(i, j)] = 0;
+                cache_row[i] = 0;
                 continue;
             }
 
@@ -107,44 +85,29 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
 
                 if cur_damaged_group_len == i {
                     // Damaged group spans the entire row up to this point.
-                    cache[(i, j)] = cache[(0, j - 1)];
+                    cache_row[i] = prev_cache_row[0];
                     continue;
                 }
 
                 if row[i - cur_damaged_group_len - 1] != SpringCondition::Damaged {
                     // Damaged group is preceded by at least one operational spring.
-                    num_arrangements += cache[(i - cur_damaged_group_len - 1, j - 1)];
+                    num_arrangements += prev_cache_row[i - cur_damaged_group_len - 1];
                 }
             } else if cur_spring == SpringCondition::Damaged {
                 // Damaged spring must be part of a damaged group, but no damaged group ends here.
-                cache[(i, j)] = 0;
+                cache_row[i] = 0;
                 continue;
             }
 
             if cur_spring != SpringCondition::Damaged {
-                num_arrangements += cache[(i - 1, j)];
+                num_arrangements += cache_row[i - 1];
             }
 
-            cache[(i, j)] = num_arrangements;
+            cache_row[i] = num_arrangements;
         }
     }
 
-    // // Print the cache for debugging.
-    // for j in 0..=damaged_groups.len() {
-    //     for i in 0..=row.len() {
-    //         print!(
-    //             "{:4} ",
-    //             match cache[(i, j)] {
-    //                 0 => "".to_string(),
-    //                 x => x.to_string(),
-    //             }
-    //         );
-    //     }
-    //     println!();
-    // }
-    // println!();
-
-    cache[(row.len(), damaged_groups.len())]
+    cache_row[row.len()]
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
