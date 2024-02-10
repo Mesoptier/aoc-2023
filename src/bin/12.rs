@@ -1,5 +1,3 @@
-use std::iter;
-
 use itertools::Itertools;
 use nom::bytes::complete::tag;
 use nom::character::complete::{digit1, one_of, space1};
@@ -35,24 +33,21 @@ fn parse_line(input: &str, repeat: usize) -> IResult<&str, (Vec<SpringCondition>
         separated_list1(tag(","), map_res(digit1, str::parse)),
     )(input)?;
 
-    if repeat == 1 {
-        return Ok((input, (springs, damaged_groups)));
-    }
-
+    let mut springs = springs;
+    let old_springs_len = springs.len();
     let springs_len = (springs.len() + 1) * repeat - 1;
-    let springs = springs
-        .into_iter()
-        .chain(iter::once(SpringCondition::Unknown))
-        .cycle()
-        .take(springs_len)
-        .collect_vec();
+    springs.reserve_exact(springs_len - old_springs_len);
 
+    let mut damaged_groups = damaged_groups;
+    let old_damaged_groups_len = damaged_groups.len();
     let damaged_groups_len = damaged_groups.len() * repeat;
-    let damaged_groups = damaged_groups
-        .into_iter()
-        .cycle()
-        .take(damaged_groups_len)
-        .collect_vec();
+    damaged_groups.reserve_exact(damaged_groups_len - old_damaged_groups_len);
+
+    for _ in 1..repeat {
+        springs.push(SpringCondition::Unknown);
+        springs.extend_from_within(..old_springs_len);
+        damaged_groups.extend_from_within(..old_damaged_groups_len);
+    }
 
     Ok((input, (springs, damaged_groups)))
 }
