@@ -54,56 +54,39 @@ fn count_arrangements(row: &[SpringCondition], damaged_groups: &[usize]) -> usiz
         cache_row[i] = 1;
     }
 
-    for &cur_damaged_group_len in damaged_groups {
+    for &damaged_group_len in damaged_groups {
         std::mem::swap(&mut cache_row, &mut prev_cache_row);
 
         // Initialize first column.
         cache_row[0] = 0;
 
-        // Number of (potentially) damaged springs at the end of `row[..i]`.
-        let mut damaged_suffix = 0;
+        let mut last_undamaged_i = 0;
 
         for i in 1..=row.len() {
-            let cur_spring = row[i - 1];
+            cache_row[i] = 0;
 
-            // Maintain the `damaged_suffix` count.
-            match cur_spring {
-                SpringCondition::Damaged | SpringCondition::Unknown => damaged_suffix += 1,
-                SpringCondition::Operational => damaged_suffix = 0,
+            if row[i - 1] != SpringCondition::Damaged {
+                cache_row[i] += cache_row[i - 1];
             }
 
-            if cur_damaged_group_len > i {
-                // Not enough space for the damaged group.
-                cache_row[i] = 0;
-                continue;
-            }
+            if row[i - 1] != SpringCondition::Operational {
+                // Number of (potentially) damaged springs at the end of `row[..i]`.
+                let damaged_suffix_len = i - last_undamaged_i;
 
-            let mut num_arrangements = 0;
+                if damaged_suffix_len >= damaged_group_len {
+                    // A damaged group could end here.
 
-            if damaged_suffix >= cur_damaged_group_len {
-                // A damaged group could end here.
-
-                if cur_damaged_group_len == i {
-                    // Damaged group spans the entire row up to this point.
-                    cache_row[i] = prev_cache_row[0];
-                    continue;
+                    if damaged_group_len == i {
+                        // Damaged group spans the entire row up to this point.
+                        cache_row[i] += prev_cache_row[0];
+                    } else if row[i - damaged_group_len - 1] != SpringCondition::Damaged {
+                        // Damaged group is preceded by at least one operational spring.
+                        cache_row[i] += prev_cache_row[i - damaged_group_len - 1];
+                    }
                 }
-
-                if row[i - cur_damaged_group_len - 1] != SpringCondition::Damaged {
-                    // Damaged group is preceded by at least one operational spring.
-                    num_arrangements += prev_cache_row[i - cur_damaged_group_len - 1];
-                }
-            } else if cur_spring == SpringCondition::Damaged {
-                // Damaged spring must be part of a damaged group, but no damaged group ends here.
-                cache_row[i] = 0;
-                continue;
+            } else {
+                last_undamaged_i = i;
             }
-
-            if cur_spring != SpringCondition::Damaged {
-                num_arrangements += cache_row[i - 1];
-            }
-
-            cache_row[i] = num_arrangements;
         }
     }
 
