@@ -73,33 +73,35 @@ fn count_arrangements(springs: &[SpringCondition], damaged_groups: &[usize]) -> 
         // Initialize first column.
         cache_row[0] = 0;
 
-        let mut last_undamaged_i = 0;
+        let mut damaged_suffix_start = 0;
 
-        for i in 1..=springs.len() {
-            cache_row[i] = 0;
+        for (i, &spring) in springs.iter().enumerate() {
+            let mut num_arrangements = 0;
 
-            if springs[i - 1] != SpringCondition::Damaged {
-                cache_row[i] += cache_row[i - 1];
+            if spring != SpringCondition::Damaged {
+                num_arrangements += cache_row[i];
             }
 
-            if springs[i - 1] != SpringCondition::Operational {
+            if spring != SpringCondition::Operational {
                 // Number of (potentially) damaged springs at the end of `row[..i]`.
-                let damaged_suffix_len = i - last_undamaged_i;
+                let damaged_suffix_len = i + 1 - damaged_suffix_start;
 
                 if damaged_suffix_len >= damaged_group_len {
                     // A damaged group could end here.
 
-                    if damaged_group_len == i {
+                    if damaged_group_len == i + 1 {
                         // Damaged group spans the entire row up to this point.
-                        cache_row[i] += prev_cache_row[0];
-                    } else if springs[i - damaged_group_len - 1] != SpringCondition::Damaged {
+                        num_arrangements += prev_cache_row[0];
+                    } else if springs[i - damaged_group_len] != SpringCondition::Damaged {
                         // Damaged group is preceded by at least one operational spring.
-                        cache_row[i] += prev_cache_row[i - damaged_group_len - 1];
+                        num_arrangements += prev_cache_row[i - damaged_group_len];
                     }
                 }
             } else {
-                last_undamaged_i = i;
+                damaged_suffix_start = i + 1;
             }
+
+            cache_row[i + 1] = num_arrangements;
         }
     }
 
