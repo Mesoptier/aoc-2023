@@ -28,12 +28,7 @@ impl BitMatrix {
         self.data[block] |= 1 << bit;
     }
 
-    fn rotate_right(mut self, dim: usize) -> Self {
-        cast_slice_mut::<u8, u128>(&mut self.data)[..dim].reverse();
-        self.transpose()
-    }
-
-    fn transpose(&self) -> Self {
+    fn rotate_right(&self) -> Self {
         let mut result = Self::new();
 
         let input = &self.data;
@@ -41,17 +36,23 @@ impl BitMatrix {
 
         for i in 0..16 {
             for j in 0..16 {
-                Self::transpose_block(input, output, i, j);
+                let block = Self::get_block_reflected(input, i, j);
+                if block == 0 {
+                    continue;
+                }
+
+                let transposed = Self::transpose_block(block);
+                Self::set_block(output, j, 15 - i, transposed);
             }
         }
 
         result
     }
 
-    fn get_block(data: &[u8], i: usize, j: usize) -> u64 {
+    fn get_block_reflected(data: &[u8], i: usize, j: usize) -> u64 {
         let mut x = 0;
         for k in 0..8 {
-            x = x << 8 | (data[16 * (8 * i + k) + j] as u64);
+            x |= (data[16 * (8 * i + k) + j] as u64) << (8 * k);
         }
         x
     }
@@ -63,8 +64,10 @@ impl BitMatrix {
         }
     }
 
-    fn transpose_block(input: &[u8], output: &mut [u8], i: usize, j: usize) {
-        let mut x = Self::get_block(input, i, j);
+    fn transpose_block(block: u64) -> u64 {
+        // Based on transpose8rS64 from Hacker's Delight
+
+        let mut x = block;
         let mut t;
 
         t = (x ^ (x >> 7)) & 0x00AA00AA00AA00AA;
@@ -74,8 +77,7 @@ impl BitMatrix {
         t = (x ^ (x >> 28)) & 0x00000000F0F0F0F0;
         x = x ^ t ^ (t << 28);
 
-        // Store x into output block
-        Self::set_block(output, j, i, x);
+        x
     }
 
     fn print(&self, dim: usize) {
@@ -91,6 +93,7 @@ impl BitMatrix {
 
 struct Field {
     dim: usize,
+    rotation: usize,
     rocks: BitMatrix,
     blocks: BitMatrix,
 }
@@ -117,38 +120,56 @@ impl Field {
             }
         }
 
-        Self { dim, rocks, blocks }
+        Self {
+            dim,
+            rotation: 0,
+            rocks,
+            blocks,
+        }
     }
 
     fn rotate_right(&mut self) {
-        self.rocks = self.rocks.rotate_right(self.dim);
-        self.blocks = self.blocks.rotate_right(self.dim); // TODO: Can be cached
+        self.rotation = (self.rotation + 1) % 4;
+        self.rocks = self.rocks.rotate_right();
+        self.blocks = self.blocks.rotate_right(); // TODO: Can be cached
+    }
+
+    fn start_i(&self) -> usize {
+        match self.rotation {
+            0 => 0,
+            1 => 0,
+            2 => 128 - self.dim,
+            3 => 128 - self.dim,
+            _ => unreachable!(),
+        }
     }
 
     fn roll_up(&mut self) {
+        let start_i = self.start_i();
         let rocks_data = cast_slice_mut::<u8, u128>(&mut self.rocks.data);
         let blocks_data = cast_slice::<u8, u128>(&self.blocks.data);
 
-        for i in 1..self.dim {
+        for i in (start_i + 1)..start_i + self.dim {
             let mut rolling_rocks = rocks_data[i];
             rocks_data[i] = 0;
 
             let mut j = i;
-            while rolling_rocks != 0 && j != 0 {
+            while rolling_rocks != 0 && j != start_i {
                 let is_blocked = rocks_data[j - 1] | blocks_data[j - 1];
                 rocks_data[j] |= rolling_rocks & is_blocked;
                 rolling_rocks &= !is_blocked;
                 j -= 1;
             }
-            rocks_data[0] |= rolling_rocks;
+            rocks_data[start_i] |= rolling_rocks;
         }
     }
 
     fn total_load(&self) -> u32 {
         let rocks_data = cast_slice::<u8, u128>(&self.rocks.data);
         let mut total_load = 0;
-        for i in 0..self.dim {
-            total_load += (self.dim - i) as u32 * rocks_data[i].count_ones();
+        let start_i = self.start_i();
+        for i in start_i..start_i + self.dim {
+            total_load += (self.dim - (i - start_i)) as u32 * rocks_data[i].count_ones();
         }
         total_load
     }
@@ -156,8 +177,9 @@ impl Field {
     fn total_load_reverse(&self) -> u32 {
         let rocks_data = cast_slice::<u8, u128>(&self.rocks.data);
         let mut total_load = 0;
-        for i in 0..self.dim {
-            total_load += (i + 1) as u32 * rocks_data[i].count_ones();
+        let start_i = self.start_i();
+        for i in start_i..start_i + self.dim {
+            total_load += (i - start_i + 1) as u32 * rocks_data[i].count_ones();
         }
         total_load
     }
@@ -206,17 +228,6 @@ pub fn part_two(input: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn foo() {
-        let dim = 16;
-        let mut m = BitMatrix::new();
-        m.set(0, 0);
-        m.set(2, 12);
-        m.print(dim);
-        m = m.rotate_right(dim);
-        m.print(dim);
-    }
 
     #[test]
     fn test_part_one() {
