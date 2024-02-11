@@ -95,7 +95,7 @@ struct Field {
     dim: usize,
     rotation: usize,
     rocks: BitMatrix,
-    blocks: BitMatrix,
+    blocks_per_rotation: [BitMatrix; 4],
 }
 
 impl Field {
@@ -120,18 +120,22 @@ impl Field {
             }
         }
 
+        let blocks_0 = blocks;
+        let blocks_1 = blocks_0.rotate_right();
+        let blocks_2 = blocks_1.rotate_right();
+        let blocks_3 = blocks_2.rotate_right();
+
         Self {
             dim,
             rotation: 0,
             rocks,
-            blocks,
+            blocks_per_rotation: [blocks_0, blocks_1, blocks_2, blocks_3],
         }
     }
 
     fn rotate_right(&mut self) {
         self.rotation = (self.rotation + 1) % 4;
         self.rocks = self.rocks.rotate_right();
-        self.blocks = self.blocks.rotate_right(); // TODO: Can be cached
     }
 
     fn start_i(&self) -> usize {
@@ -147,7 +151,7 @@ impl Field {
     fn roll_up(&mut self) {
         let start_i = self.start_i();
         let rocks_data = cast_slice_mut::<u8, u128>(&mut self.rocks.data);
-        let blocks_data = cast_slice::<u8, u128>(&self.blocks.data);
+        let blocks_data = cast_slice::<u8, u128>(&self.blocks_per_rotation[self.rotation].data);
 
         for i in (start_i + 1)..start_i + self.dim {
             let mut rolling_rocks = rocks_data[i];
