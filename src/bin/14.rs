@@ -1,29 +1,48 @@
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::ops::Range;
-
-use itertools::izip;
 
 advent_of_code::solution!(14);
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-struct Segment {
-    i: u32,
-    j_range: Range<u32>,
-    // Index of the segment intersecting this one in the other direction for each j in j_range
-    lookup: Vec<u32>,
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+struct BitMatrix {
+    data: [u128; 128],
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+impl BitMatrix {
+    fn new() -> Self {
+        Self { data: [0; 128] }
+    }
+
+    fn get(&self, i: usize, j: usize) -> bool {
+        (self.data[i] >> j) & 1 == 1
+    }
+
+    fn set(&mut self, i: usize, j: usize) {
+        self.data[i] |= 1 << j;
+    }
+
+    fn clear(&mut self, i: usize, j: usize) {
+        self.data[i] &= !(1 << j);
+    }
+
+    fn rotate_right(&self, dim: usize) -> Self {
+        // TODO: Optimize algorithm (SIMD, in-place, etc.)
+        let mut result = Self::new();
+        for i in 0..dim {
+            for j in 0..dim {
+                if self.get(i, j) {
+                    result.set(j, dim - i - 1);
+                }
+            }
+        }
+        result
+    }
+}
+
 struct Field {
-    dim: u32,
-
-    vertical_segments: Vec<Segment>,   // (i, j) = (x, y)
-    horizontal_segments: Vec<Segment>, // (i, j) = (y, x)
-
-    // Number of rounded rocks per vertical/horizontal segment
-    vertical_counts: Vec<u32>,
-    horizontal_counts: Vec<u32>,
+    dim: usize,
+    rocks: BitMatrix,
+    blocks: BitMatrix,
 }
 
 impl Field {
@@ -31,243 +50,95 @@ impl Field {
         let (lines, dim) = {
             let mut lines = input.lines().peekable();
             let dim = lines.peek().unwrap().len();
-            (lines, dim as u32)
+            (lines, dim)
         };
 
-        let mut vertical_segments = vec![];
-        let mut horizontal_segments = vec![];
+        let mut rocks = BitMatrix::new();
+        let mut blocks = BitMatrix::new();
 
-        let mut vertical_counts = vec![];
-        let mut horizontal_counts = vec![];
-
-        #[derive(Clone)]
-        struct Frontier {
-            j_start: u32, // y for vertical frontiers, x for horizontal frontiers
-            segment_idx: u32,
-            count: u32,
-            lookup: Vec<u32>,
-        }
-
-        fn close_frontier(
-            frontier: &mut Option<Frontier>,
-            i: u32,
-            j_end: u32,
-            segments: &mut Vec<Segment>,
-            counts: &mut Vec<u32>,
-        ) {
-            if let Some(frontier) = frontier.take() {
-                let segment = Segment {
-                    i,
-                    j_range: frontier.j_start..j_end,
-                    lookup: frontier.lookup,
-                };
-
-                // Resize segments and counts to fit the new segment
-                if segments.len() as u32 <= frontier.segment_idx {
-                    let new_len = (frontier.segment_idx + 1) as usize;
-                    segments.resize(
-                        new_len,
-                        Segment {
-                            i: 0,
-                            j_range: 0..0,
-                            lookup: vec![],
-                        },
-                    );
-                    counts.resize(new_len, 0);
-                }
-
-                segments[frontier.segment_idx as usize] = segment;
-                counts[frontier.segment_idx as usize] = frontier.count;
-            }
-        }
-
-        let mut vertical_frontiers: Vec<Option<Frontier>> = vec![None; dim as usize];
-        let mut next_vertical_segment_idx = 0;
-        let mut next_horizontal_segment_idx = 0;
-
-        for (y, line) in lines.enumerate() {
-            let y = y as u32;
-            let mut horizontal_frontier: Option<Frontier> = None;
-
-            for (x, c) in line.chars().enumerate() {
-                let vertical_frontier = &mut vertical_frontiers[x];
-                let x = x as u32;
-
-                if c == '#' {
-                    // Close current horizontal/vertical frontier
-                    close_frontier(
-                        &mut horizontal_frontier,
-                        y,
-                        x,
-                        &mut horizontal_segments,
-                        &mut horizontal_counts,
-                    );
-                    close_frontier(
-                        vertical_frontier,
-                        x,
-                        y,
-                        &mut vertical_segments,
-                        &mut vertical_counts,
-                    );
-                } else {
-                    // Open new horizontal/vertical frontier
-                    let horizontal_frontier = horizontal_frontier.get_or_insert_with(|| {
-                        let frontier = Frontier {
-                            j_start: x,
-                            segment_idx: next_horizontal_segment_idx,
-                            count: 0,
-                            lookup: vec![],
-                        };
-                        next_horizontal_segment_idx += 1;
-                        frontier
-                    });
-                    let vertical_frontier = vertical_frontier.get_or_insert_with(|| {
-                        let frontier = Frontier {
-                            j_start: y,
-                            segment_idx: next_vertical_segment_idx,
-                            count: 0,
-                            lookup: vec![],
-                        };
-                        next_vertical_segment_idx += 1;
-                        frontier
-                    });
-
-                    // Add horizontal/vertical frontier to each other's lookup
-                    horizontal_frontier
-                        .lookup
-                        .push(vertical_frontier.segment_idx);
-                    vertical_frontier
-                        .lookup
-                        .push(horizontal_frontier.segment_idx);
-
-                    if c == 'O' {
-                        // Rounded rocks are only added for vertical segments
-                        vertical_frontier.count += 1;
-                    }
+        for (i, line) in lines.enumerate() {
+            for (j, c) in line.chars().enumerate() {
+                match c {
+                    '.' => {}
+                    'O' => rocks.set(i, j),
+                    '#' => blocks.set(i, j),
+                    _ => unreachable!(),
                 }
             }
-
-            // Close current horizontal frontier
-            close_frontier(
-                &mut horizontal_frontier,
-                y,
-                dim,
-                &mut horizontal_segments,
-                &mut horizontal_counts,
-            );
         }
 
-        // Close current vertical frontiers
-        for (x, frontier) in vertical_frontiers.iter_mut().enumerate() {
-            let x = x as u32;
-            close_frontier(
-                frontier,
-                x,
-                dim,
-                &mut vertical_segments,
-                &mut vertical_counts,
-            );
-        }
+        Self { dim, rocks, blocks }
+    }
 
-        Self {
-            dim,
-            vertical_segments,
-            horizontal_segments,
-            vertical_counts,
-            horizontal_counts,
+    fn rotate_right(&mut self) {
+        self.rocks = self.rocks.rotate_right(self.dim);
+        self.blocks = self.blocks.rotate_right(self.dim); // TODO: Can be cached
+    }
+
+    fn roll_up(&mut self) {
+        for i in 1..self.dim {
+            let mut rolling_rocks = self.rocks.data[i];
+            self.rocks.data[i] = 0;
+
+            let mut j = i;
+            while rolling_rocks != 0 && j != 0 {
+                let is_blocked = self.rocks.data[j - 1] | self.blocks.data[j - 1];
+                self.rocks.data[j] |= rolling_rocks & is_blocked;
+                rolling_rocks &= !is_blocked;
+                j -= 1;
+            }
+            self.rocks.data[0] |= rolling_rocks;
         }
     }
 
-    /// (from_vertical, from_reverse)
-    /// (false, true) = east -> north
-    /// (true, false) = north -> west
-    /// (false, false) = west -> south
-    /// (true, true) = south -> east
-    fn slide_rounded_rocks(&mut self, from_vertical: bool, from_reverse: bool) {
-        let (segments, counts, other_counts) = if from_vertical {
-            (
-                &self.vertical_segments,
-                &mut self.vertical_counts,
-                &mut self.horizontal_counts,
-            )
-        } else {
-            (
-                &self.horizontal_segments,
-                &mut self.horizontal_counts,
-                &mut self.vertical_counts,
-            )
-        };
-
-        for (segment, count) in izip!(segments, counts) {
-            let (offset_start, offset_end) = if from_reverse {
-                (
-                    segment.j_range.len() - *count as usize,
-                    segment.j_range.len(),
-                )
-            } else {
-                (0, *count as usize)
-            };
-
-            // Transfer rounded rocks to segments in the other direction
-            for other_segment_idx in segment.lookup[offset_start..offset_end].iter() {
-                other_counts[*other_segment_idx as usize] += 1;
-            }
-            *count = 0;
-        }
-    }
-
-    /// Calculates the total load on the north support beams.
-    ///
-    /// Assumes the last slide direction was vertical, either north (`reverse = false`) or south (`reverse = true`).
-    fn total_load(&self, reverse: bool) -> u32 {
+    fn total_load(&self) -> u32 {
         let mut total_load = 0;
-        for (segment, count) in izip!(&self.vertical_segments, &self.vertical_counts) {
-            let y_start = if !reverse {
-                segment.j_range.start
-            } else {
-                segment.j_range.end - *count
-            };
-
-            let load = count * (self.dim - y_start) - (count * count.wrapping_sub(1)) / 2;
-            total_load += load;
+        for i in 0..self.dim {
+            total_load += (self.dim - i) as u32 * self.rocks.data[i].count_ones();
         }
         total_load
+    }
+
+    fn total_load_reverse(&self) -> u32 {
+        let mut total_load = 0;
+        for i in 0..self.dim {
+            total_load += (i + 1) as u32 * self.rocks.data[i].count_ones();
+        }
+        total_load
+    }
+
+    fn cycle(&mut self) -> u32 {
+        self.roll_up(); // rolled north
+        self.rotate_right();
+        self.roll_up(); // rolled west
+        self.rotate_right();
+        self.roll_up(); // rolled south
+        let result = self.total_load_reverse();
+        self.rotate_right();
+        self.roll_up(); // rolled east
+        self.rotate_right();
+        result
     }
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
-    let field = Field::from_input(input);
-    // Sliding north is implicit in loading the field
-    Some(field.total_load(false))
+    let mut field = Field::from_input(input);
+    field.roll_up();
+    Some(field.total_load())
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
     let mut field = Field::from_input(input);
-
     let mut cycles = 0;
-    let mut cache = HashMap::<Vec<u32>, usize>::new();
+
+    let mut cache = HashMap::<BitMatrix, usize>::new();
     let mut total_loads = vec![];
 
-    // First cycle
-    // Sliding north is implicit in loading the field
-    field.slide_rounded_rocks(true, false); // north -> west
-    field.slide_rounded_rocks(false, false); // west -> south
-    field.slide_rounded_rocks(true, true); // south -> east
-    cycles += 1;
-
     loop {
-        field.slide_rounded_rocks(false, true); // east -> north
-        field.slide_rounded_rocks(true, false); // north -> west
-        field.slide_rounded_rocks(false, false); // west -> south
-
-        // .total_load() assumes last slide direction was vertical, so we calculate it before sliding east
-        let total_load = field.total_load(true);
-
-        field.slide_rounded_rocks(true, true); // south -> east
-
+        let total_load = field.cycle();
         cycles += 1;
 
-        if let Some(prev_cycles) = cache.insert(field.horizontal_counts.clone(), cycles) {
+        if let Some(prev_cycles) = cache.insert(field.rocks, cycles) {
             let cycles_repeat = cycles - prev_cycles;
             let cycles_remaining = (1_000_000_000 - cycles) % cycles_repeat;
             return Some(total_loads[total_loads.len() - cycles_repeat + cycles_remaining]);
