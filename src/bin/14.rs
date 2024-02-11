@@ -1,3 +1,4 @@
+use bytemuck::{cast_slice, cast_slice_mut};
 use std::collections::HashMap;
 use std::hash::Hash;
 
@@ -5,37 +6,86 @@ advent_of_code::solution!(14);
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
 struct BitMatrix {
-    data: [u128; 128],
+    data: [u8; 8 * 16 * 16],
 }
 
 impl BitMatrix {
     fn new() -> Self {
-        Self { data: [0; 128] }
+        Self {
+            data: [0; 8 * 16 * 16],
+        }
     }
 
     fn get(&self, i: usize, j: usize) -> bool {
-        (self.data[i] >> j) & 1 == 1
+        let block = 16 * i + (j / 8);
+        let bit = 7 - (j % 8);
+        (self.data[block] >> bit) & 1 == 1
     }
 
     fn set(&mut self, i: usize, j: usize) {
-        self.data[i] |= 1 << j;
+        let block = 16 * i + (j / 8);
+        let bit = 7 - (j % 8);
+        self.data[block] |= 1 << bit;
     }
 
-    fn clear(&mut self, i: usize, j: usize) {
-        self.data[i] &= !(1 << j);
+    fn rotate_right(mut self, dim: usize) -> Self {
+        cast_slice_mut::<u8, u128>(&mut self.data)[..dim].reverse();
+        self.transpose()
     }
 
-    fn rotate_right(&self, dim: usize) -> Self {
-        // TODO: Optimize algorithm (SIMD, in-place, etc.)
+    fn transpose(&self) -> Self {
         let mut result = Self::new();
-        for i in 0..dim {
-            for j in 0..dim {
-                if self.get(i, j) {
-                    result.set(j, dim - i - 1);
-                }
+
+        let input = &self.data;
+        let output = &mut result.data;
+
+        for i in 0..16 {
+            for j in 0..16 {
+                Self::transpose_block(input, output, i, j);
             }
         }
+
         result
+    }
+
+    fn get_block(data: &[u8], i: usize, j: usize) -> u64 {
+        let mut x = 0;
+        for k in 0..8 {
+            x = x << 8 | (data[16 * (8 * i + k) + j] as u64);
+        }
+        x
+    }
+
+    fn set_block(data: &mut [u8], i: usize, j: usize, mut x: u64) {
+        for k in (0..8).rev() {
+            data[16 * (8 * i + k) + j] = x as u8;
+            x >>= 8;
+        }
+    }
+
+    fn transpose_block(input: &[u8], output: &mut [u8], i: usize, j: usize) {
+        let mut x = Self::get_block(input, i, j);
+        let mut t;
+
+        t = (x ^ (x >> 7)) & 0x00AA00AA00AA00AA;
+        x = x ^ t ^ (t << 7);
+        t = (x ^ (x >> 14)) & 0x0000CCCC0000CCCC;
+        x = x ^ t ^ (t << 14);
+        t = (x ^ (x >> 28)) & 0x00000000F0F0F0F0;
+        x = x ^ t ^ (t << 28);
+
+        // Store x into output block
+        Self::set_block(output, j, i, x);
+    }
+
+    fn print(&self, dim: usize) {
+        for i in 0..dim {
+            for j in 0..dim {
+                print!("{}", if self.get(i, j) { '1' } else { '.' });
+            }
+            println!();
+        }
+        println!();
     }
 }
 
@@ -76,33 +126,38 @@ impl Field {
     }
 
     fn roll_up(&mut self) {
+        let rocks_data = cast_slice_mut::<u8, u128>(&mut self.rocks.data);
+        let blocks_data = cast_slice::<u8, u128>(&self.blocks.data);
+
         for i in 1..self.dim {
-            let mut rolling_rocks = self.rocks.data[i];
-            self.rocks.data[i] = 0;
+            let mut rolling_rocks = rocks_data[i];
+            rocks_data[i] = 0;
 
             let mut j = i;
             while rolling_rocks != 0 && j != 0 {
-                let is_blocked = self.rocks.data[j - 1] | self.blocks.data[j - 1];
-                self.rocks.data[j] |= rolling_rocks & is_blocked;
+                let is_blocked = rocks_data[j - 1] | blocks_data[j - 1];
+                rocks_data[j] |= rolling_rocks & is_blocked;
                 rolling_rocks &= !is_blocked;
                 j -= 1;
             }
-            self.rocks.data[0] |= rolling_rocks;
+            rocks_data[0] |= rolling_rocks;
         }
     }
 
     fn total_load(&self) -> u32 {
+        let rocks_data = cast_slice::<u8, u128>(&self.rocks.data);
         let mut total_load = 0;
         for i in 0..self.dim {
-            total_load += (self.dim - i) as u32 * self.rocks.data[i].count_ones();
+            total_load += (self.dim - i) as u32 * rocks_data[i].count_ones();
         }
         total_load
     }
 
     fn total_load_reverse(&self) -> u32 {
+        let rocks_data = cast_slice::<u8, u128>(&self.rocks.data);
         let mut total_load = 0;
         for i in 0..self.dim {
-            total_load += (i + 1) as u32 * self.rocks.data[i].count_ones();
+            total_load += (i + 1) as u32 * rocks_data[i].count_ones();
         }
         total_load
     }
@@ -151,6 +206,17 @@ pub fn part_two(input: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn foo() {
+        let dim = 16;
+        let mut m = BitMatrix::new();
+        m.set(0, 0);
+        m.set(2, 12);
+        m.print(dim);
+        m = m.rotate_right(dim);
+        m.print(dim);
+    }
 
     #[test]
     fn test_part_one() {

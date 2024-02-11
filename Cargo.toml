@@ -27,6 +27,7 @@ debug_output = [] # Enable debug output in the binaries
 [dependencies]
 arrayvec = "0.7.4"
 bucket_queue = "2.0.0"
+bytemuck = "1.14.3"
 chrono = { version = "0.4.31", optional = true }
 dhat = { version = "0.3.2", optional = true }
 enum_dispatch = "0.3.12"
