@@ -9,8 +9,6 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
 doctest = false
-
-[profile.release]
 #lto = "fat"
 #codegen-units = 1 # Must be set to 1 for fat LTO to work properly
 
@@ -25,6 +23,7 @@ test_lib = []
 debug_output = [] # Enable debug output in the binaries
 
 [dependencies]
+ahash = "0.8.8"
 arrayvec = "0.7.4"
 bucket_queue = "2.0.0"
 chrono = { version = "0.4.31", optional = true }
