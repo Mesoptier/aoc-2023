@@ -144,6 +144,9 @@ impl Field {
         self.rocks = self.rocks.rotate_right();
     }
 
+    /// The index of the first row of the field in the bit matrix.
+    ///
+    /// This is needed since the bit matrix is 128x128, but the field is only dim x dim.
     fn start_i(&self) -> usize {
         match self.rotation {
             0 => 0,
