@@ -7,15 +7,16 @@ use std::simd::prelude::*;
 advent_of_code::solution!(14);
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
-#[repr(align(128))]
+#[repr(align(16))] // Align to 128 bits
 struct BitMatrix {
-    data: [u8; 8 * 16 * 16],
+    /// 128 rows of 128 bits (= 16 bytes) each
+    data: [u8; 16 * 128],
 }
 
 impl BitMatrix {
     fn new() -> Self {
         Self {
-            data: [0; 8 * 16 * 16],
+            data: [0; 16 * 128],
         }
     }
 
