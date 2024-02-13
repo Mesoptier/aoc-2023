@@ -95,8 +95,6 @@ impl BitMatrix {
     }
 }
 
-type FieldCacheKey = [u8; 16 * 100];
-
 struct Field {
     dim: usize,
     rotation: usize,
@@ -230,12 +228,16 @@ impl Field {
         self.rotate_right();
         result
     }
+}
 
+type FieldCacheKey = [u8; 16 * 100];
+
+impl Field {
     fn cache_key(&self) -> FieldCacheKey {
         let mut key = [0; 16 * 100];
         let start = self.start_i() * 16;
-        let end = start + self.dim * 16;
-        key.copy_from_slice(&self.rocks.data[start..end]);
+        let len = self.dim * 16;
+        key[..len].copy_from_slice(&self.rocks.data[start..start + len]);
         key
     }
 }
