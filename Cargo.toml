@@ -23,6 +23,7 @@ test_lib = []
 debug_output = [] # Enable debug output in the binaries
 
 [dependencies]
+ahash = "0.8.8"
 arrayvec = "0.7.4"
 bucket_queue = "2.0.0"
 chrono = { version = "0.4.31", optional = true }

@@ -1,5 +1,6 @@
 #![feature(portable_simd)]
 
+use ahash::AHashMap;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::simd::prelude::*;
@@ -252,7 +253,7 @@ pub fn part_two(input: &str) -> Option<u32> {
     let mut field = Field::from_input(input);
     let mut cycles = 0;
 
-    let mut cache = HashMap::<FieldCacheKey, usize>::new();
+    let mut cache = AHashMap::<FieldCacheKey, usize>::new();
     let mut total_loads = vec![];
 
     loop {
