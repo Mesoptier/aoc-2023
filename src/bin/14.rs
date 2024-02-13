@@ -1,10 +1,13 @@
-use bytemuck::{cast_slice, cast_slice_mut};
+#![feature(portable_simd)]
+
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::simd::prelude::*;
 
 advent_of_code::solution!(14);
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[repr(align(128))]
 struct BitMatrix {
     data: [u8; 8 * 16 * 16],
 }
@@ -150,42 +153,63 @@ impl Field {
 
     fn roll_up(&mut self) {
         let start_i = self.start_i();
-        let rocks_data = cast_slice_mut::<u8, u128>(&mut self.rocks.data);
-        let blocks_data = cast_slice::<u8, u128>(&self.blocks_per_rotation[self.rotation].data);
+
+        const LANES: usize = 16; // 128 / 8, so each SIMD register holds an entire row of the BitMatrix.
+        let (rocks_rows_prefix, rocks_rows, rocks_rows_suffix) =
+            self.rocks.data.as_simd_mut::<LANES>();
+        let (blocks_rows_prefix, blocks_rows, blocks_rows_suffix) = self.blocks_per_rotation
+            [self.rotation]
+            .data
+            .as_simd::<LANES>();
+
+        // The logic below only works if each entry in the rocks and blocks data spans an entire row of 128 bits.
+        // So we need to ensure that the prefix and suffix are empty.
+        // TODO: This should always be the case since the BitMatrix is aligned to 128 bits. Can the compiler check this?
+        assert_eq!(rocks_rows_prefix.len(), 0);
+        assert_eq!(rocks_rows_suffix.len(), 0);
+        assert_eq!(blocks_rows_prefix.len(), 0);
+        assert_eq!(blocks_rows_suffix.len(), 0);
 
         for i in (start_i + 1)..start_i + self.dim {
-            let mut rolling_rocks = rocks_data[i];
-            rocks_data[i] = 0;
+            let mut rolling_rocks = rocks_rows[i];
+            rocks_rows[i] = Simd::splat(0);
 
             let mut j = i;
-            while rolling_rocks != 0 && j != start_i {
-                let is_blocked = rocks_data[j - 1] | blocks_data[j - 1];
-                rocks_data[j] |= rolling_rocks & is_blocked;
+            while rolling_rocks != Simd::splat(0) && j != start_i {
+                let is_blocked = rocks_rows[j - 1] | blocks_rows[j - 1];
+                rocks_rows[j] |= rolling_rocks & is_blocked;
                 rolling_rocks &= !is_blocked;
                 j -= 1;
             }
-            rocks_data[start_i] |= rolling_rocks;
+            rocks_rows[start_i] |= rolling_rocks;
         }
     }
 
+    fn total_load_with<F: Fn(u32, u32) -> u32>(&self, load_factor: F) -> u32 {
+        let start_i = self.start_i();
+        let rocks_rows = self.rocks.data.chunks_exact(16);
+
+        rocks_rows
+            .skip(start_i)
+            .take(self.dim)
+            .enumerate()
+            .map(|(i, row)| {
+                row.iter().map(|&x| x.count_ones()).sum::<u32>()
+                    * load_factor(i as u32, self.dim as u32)
+            })
+            .sum()
+    }
+
+    /// Compute the total load on the North support beams, assuming the field is facing North.
     fn total_load(&self) -> u32 {
-        let rocks_data = cast_slice::<u8, u128>(&self.rocks.data);
-        let mut total_load = 0;
-        let start_i = self.start_i();
-        for i in start_i..start_i + self.dim {
-            total_load += (self.dim - (i - start_i)) as u32 * rocks_data[i].count_ones();
-        }
-        total_load
+        debug_assert_eq!(self.rotation, 0);
+        self.total_load_with(|i, dim| dim - i)
     }
 
+    /// Compute the total load on the North support beams, assuming the field is facing South.
     fn total_load_reverse(&self) -> u32 {
-        let rocks_data = cast_slice::<u8, u128>(&self.rocks.data);
-        let mut total_load = 0;
-        let start_i = self.start_i();
-        for i in start_i..start_i + self.dim {
-            total_load += (i - start_i + 1) as u32 * rocks_data[i].count_ones();
-        }
-        total_load
+        debug_assert_eq!(self.rotation, 2);
+        self.total_load_with(|i, _dim| i + 1)
     }
 
     fn cycle(&mut self) -> u32 {
