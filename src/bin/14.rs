@@ -95,6 +95,8 @@ impl BitMatrix {
     }
 }
 
+type FieldCacheKey = [u8; 16 * 100];
+
 struct Field {
     dim: usize,
     rotation: usize,
@@ -225,6 +227,14 @@ impl Field {
         self.rotate_right();
         result
     }
+
+    fn cache_key(&self) -> FieldCacheKey {
+        let mut key = [0; 16 * 100];
+        let start = self.start_i() * 16;
+        let end = start + self.dim * 16;
+        key.copy_from_slice(&self.rocks.data[start..end]);
+        key
+    }
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
@@ -237,14 +247,14 @@ pub fn part_two(input: &str) -> Option<u32> {
     let mut field = Field::from_input(input);
     let mut cycles = 0;
 
-    let mut cache = HashMap::<BitMatrix, usize>::new();
+    let mut cache = HashMap::<FieldCacheKey, usize>::new();
     let mut total_loads = vec![];
 
     loop {
         let total_load = field.cycle();
         cycles += 1;
 
-        if let Some(prev_cycles) = cache.insert(field.rocks, cycles) {
+        if let Some(prev_cycles) = cache.insert(field.cache_key(), cycles) {
             let cycles_repeat = cycles - prev_cycles;
             let cycles_remaining = (1_000_000_000 - cycles) % cycles_repeat;
             return Some(total_loads[total_loads.len() - cycles_repeat + cycles_remaining]);
