@@ -1,7 +1,6 @@
 #![feature(portable_simd)]
 
 use ahash::AHashMap;
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::simd::prelude::*;
 
