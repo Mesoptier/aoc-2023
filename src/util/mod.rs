@@ -1,3 +1,4 @@
+mod bit_matrix;
 mod bit_set;
 mod char_grid;
 pub mod coord;
@@ -6,6 +7,7 @@ mod vec_map;
 mod vec_set;
 mod vec_table;
 
+pub use bit_matrix::*;
 pub use bit_set::*;
 pub use char_grid::*;
 pub use indexer::*;
