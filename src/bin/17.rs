@@ -1,7 +1,7 @@
 use advent_of_code::util::coord::Direction;
-use advent_of_code::util::{Indexer, VecMap, VecSet, VecTable};
+use advent_of_code::util::{shortest_path, Indexer, VecTable};
 
-use bucket_queue::{BucketQueue, LastInFirstOutQueue};
+use advent_of_code::util::shortest_path::Problem;
 
 advent_of_code::solution!(17);
 
@@ -37,6 +37,7 @@ struct State {
     axis: Axis,
 }
 
+#[derive(Clone, Copy)]
 struct StateIndexer {
     coord_indexer: CoordIndexer,
 }
@@ -82,6 +83,127 @@ fn parse_input(input: &str) -> VecTable<Coord, u32, CoordIndexer> {
     VecTable::from_vec(data, indexer)
 }
 
+struct ClumsyCrucibleProblem {
+    grid: VecTable<Coord, u32, CoordIndexer>,
+    width: CoordT,
+    height: CoordT,
+    source_coord: Coord,
+    target_coord: Coord,
+    min_steps: CoordT,
+    max_steps: CoordT,
+}
+
+impl shortest_path::Problem for ClumsyCrucibleProblem {
+    type State = State;
+    type Cost = u32;
+
+    fn source_states(&self) -> impl Iterator<Item = Self::State> {
+        [Axis::Horizontal, Axis::Vertical]
+            .map(move |axis| State {
+                coord: self.source_coord,
+                axis,
+            })
+            .into_iter()
+    }
+
+    fn is_target(&self, state: &Self::State) -> bool {
+        state.coord == self.target_coord
+    }
+
+    fn neighbors(&self, state: &Self::State) -> impl Iterator<Item = (Self::State, Self::Cost)> {
+        let State {
+            coord: Coord { x, y },
+            axis,
+        } = *state;
+
+        axis.directions()
+            .into_iter()
+            .filter_map(move |direction| {
+                let steps_to_edge = match direction {
+                    Direction::Up => y,
+                    Direction::Right => self.width - x - 1,
+                    Direction::Down => self.height - y - 1,
+                    Direction::Left => x,
+                };
+                if steps_to_edge < self.min_steps {
+                    // Not enough space to move in this direction
+                    return None;
+                }
+
+                let (dx, dy) = match direction {
+                    Direction::Up => (0, (-1i32) as u32),
+                    Direction::Right => (1, 0),
+                    Direction::Down => (0, 1),
+                    Direction::Left => ((-1i32) as u32, 0),
+                };
+
+                Some((steps_to_edge, dx, dy))
+            })
+            .flat_map(move |(steps_to_edge, dx, dy)| {
+                let mut next_cost = 0;
+                let mut x = x;
+                let mut y = y;
+
+                for _ in 1..self.min_steps {
+                    x = x.wrapping_add(dx);
+                    y = y.wrapping_add(dy);
+
+                    let next_coord = Coord::new(x, y);
+                    next_cost += self.grid.get(&next_coord);
+                }
+
+                (self.min_steps..=self.max_steps.min(steps_to_edge)).map(move |_| {
+                    x = x.wrapping_add(dx);
+                    y = y.wrapping_add(dy);
+
+                    let next_coord = Coord::new(x, y);
+                    next_cost += self.grid.get(&next_coord);
+
+                    let next_state = State {
+                        coord: next_coord,
+                        axis: axis.orthogonal(),
+                    };
+
+                    (next_state, next_cost)
+                })
+            })
+    }
+
+    fn heuristic(&self, state: &Self::State) -> Self::Cost {
+        // Manhattan distance to the target coord
+        let State { coord, .. } = state;
+        self.target_coord.x - coord.x + self.target_coord.y - coord.y
+    }
+}
+
+impl shortest_path::BiDirProblem for ClumsyCrucibleProblem {
+    fn target_states(&self) -> impl Iterator<Item = Self::State> {
+        [Axis::Horizontal, Axis::Vertical]
+            .map(move |axis| State {
+                coord: self.target_coord,
+                axis,
+            })
+            .into_iter()
+    }
+
+    fn is_source(&self, state: &Self::State) -> bool {
+        state.coord == self.source_coord
+    }
+
+    fn rev_neighbors(
+        &self,
+        state: &Self::State,
+    ) -> impl Iterator<Item = (Self::State, Self::Cost)> {
+        self.neighbors(state)
+    }
+
+    fn rev_heuristic(&self, state: &Self::State) -> Self::Cost {
+        // Manhattan distance to the source coord
+        let State { coord, .. } = state;
+        self.source_coord.x - coord.x + self.source_coord.y - coord.y
+    }
+}
+
 fn solve(input: &str, ultra: bool) -> Option<u32> {
     let grid = parse_input(input);
 
@@ -92,112 +214,19 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
     let width = coord_indexer.width;
     let height = coord_indexer.height;
 
-    let start = Coord::new(0, 0);
-    let destination = Coord::new(width - 1, height - 1);
+    let source_coord = Coord::new(0, 0);
+    let target_coord = Coord::new(width - 1, height - 1);
 
-    let heuristic = |state: &State| -> u32 {
-        // Manhattan distance to the destination
-        let State { coord, .. } = state;
-        destination.x - coord.x + destination.y - coord.y
+    let problem = ClumsyCrucibleProblem {
+        grid,
+        width,
+        height,
+        source_coord,
+        target_coord,
+        min_steps,
+        max_steps,
     };
-
-    let mut queue = BucketQueue::<Vec<State>>::new();
-    let mut best_costs: VecMap<State, u32, StateIndexer> =
-        VecMap::new(StateIndexer::new(width, height));
-    let mut visited = VecSet::new(StateIndexer::new(width, height));
-
-    let state = State {
-        coord: start,
-        axis: Axis::Horizontal,
-    };
-    best_costs.insert(&state, 0);
-    queue.push(state, heuristic(&state) as usize);
-
-    let state = State {
-        coord: start,
-        axis: Axis::Vertical,
-    };
-    best_costs.insert(&state, 0);
-    queue.push(state, heuristic(&state) as usize);
-
-    while let Some(state) = queue.pop_min() {
-        let State {
-            coord: Coord { x, y },
-            axis,
-        } = state;
-
-        if !visited.insert(state) {
-            // Already visited this state
-            continue;
-        }
-
-        let cost = *best_costs.get(&state).unwrap();
-
-        if x == destination.x && y == destination.y {
-            // Found the destination
-            return Some(cost);
-        }
-
-        for direction in axis.directions() {
-            let steps_to_edge = match direction {
-                Direction::Up => y,
-                Direction::Right => width - x - 1,
-                Direction::Down => height - y - 1,
-                Direction::Left => x,
-            };
-            if steps_to_edge < min_steps {
-                // Not enough space to move in this direction
-                continue;
-            }
-
-            let (dx, dy) = match direction {
-                Direction::Up => (0, (-1i32) as u32),
-                Direction::Right => (1, 0),
-                Direction::Down => (0, 1),
-                Direction::Left => ((-1i32) as u32, 0),
-            };
-
-            let mut next_cost = cost;
-            let mut x = x;
-            let mut y = y;
-
-            for _ in 1..min_steps {
-                x = x.wrapping_add(dx);
-                y = y.wrapping_add(dy);
-
-                let next_coord = Coord::new(x, y);
-                next_cost += grid.get(&next_coord);
-            }
-
-            for _ in min_steps..=max_steps.min(steps_to_edge) {
-                x = x.wrapping_add(dx);
-                y = y.wrapping_add(dy);
-
-                let next_coord = Coord::new(x, y);
-                next_cost += grid.get(&next_coord);
-
-                let next_state = State {
-                    coord: next_coord,
-                    axis: axis.orthogonal(),
-                };
-
-                match best_costs.entry(&next_state) {
-                    Some(best_cost) if *best_cost <= next_cost => {
-                        // If we've already found a better path to this state, skip it
-                        continue;
-                    }
-                    entry => {
-                        // Otherwise, update the best cost and add the state to the queue
-                        *entry = Some(next_cost);
-                    }
-                }
-
-                queue.push(next_state, (next_cost + heuristic(&next_state)) as usize);
-            }
-        }
-    }
-
-    None
+    shortest_path::a_star(problem, StateIndexer::new(width, height))
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
