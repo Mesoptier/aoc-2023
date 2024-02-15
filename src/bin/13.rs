@@ -1,72 +1,106 @@
+use advent_of_code::util::BitMatrix;
 use itertools::Itertools;
-use nom::branch::alt;
-use nom::character::complete::{char, line_ending};
-use nom::combinator::value;
-use nom::multi::{many1, separated_list1};
-use nom::IResult;
-use std::iter;
 advent_of_code::solution!(13);
 
-fn parse_input(input: &str) -> IResult<&str, Vec<Vec<Vec<bool>>>> {
-    separated_list1(
-        many1(line_ending),
-        separated_list1(
-            line_ending,
-            many1(alt((value(false, char('.')), value(true, char('#'))))),
-        ),
-    )(input)
-}
+fn parse_input_iter(input: &str) -> impl Iterator<Item = Pattern> + '_ {
+    input.lines().batching(|lines| {
+        let mut data = BitMatrix::<4>::new();
+        let mut width = 0;
+        let mut height = 0;
 
-fn transpose_map(map: &Vec<Vec<bool>>) -> Vec<Vec<bool>> {
-    let mut result = vec![vec![false; map.len()]; map[0].len()];
-    for (x, row) in map.iter().enumerate() {
-        for (y, &value) in row.iter().enumerate() {
-            result[y][x] = value;
-        }
-    }
-    result
-}
-
-fn find_horizontal_reflection_line(map: &Vec<Vec<bool>>, target_smudges: usize) -> Option<usize> {
-    (1..map.len()).find(|&num_rows_above| {
-        let num_rows_below = map.len() - num_rows_above;
-        let max_offset = usize::min(num_rows_above - 1, num_rows_below - 1);
-
-        let mut smudges = 0;
-
-        for offset in 0..=max_offset {
-            let row_above = &map[num_rows_above - offset - 1];
-            let row_below = &map[num_rows_above + offset];
-
-            iter::zip(row_above, row_below)
-                .filter(|(&a, &b)| a != b)
-                .for_each(|_| smudges += 1);
-
-            if smudges > target_smudges {
-                return false;
+        for (i, line) in lines.take_while(|line| !line.is_empty()).enumerate() {
+            for (j, c) in line.chars().enumerate() {
+                if c == '#' {
+                    data.set(i, j);
+                }
             }
+
+            width = width.max(line.len());
+            height += 1;
         }
 
-        smudges == target_smudges
+        if height > 0 {
+            Some(Pattern {
+                data,
+                width,
+                height,
+            })
+        } else {
+            None
+        }
     })
 }
 
-fn solve(input: &str, smudges: usize) -> Option<usize> {
-    let (_, maps) = parse_input(input).unwrap();
+struct Pattern {
+    data: BitMatrix<4>,
+    width: usize,
+    height: usize,
+}
 
-    maps.into_iter()
-        .map(|map| {
-            if let Some(line) = find_horizontal_reflection_line(&map, smudges) {
-                line * 100
-            } else if let Some(line) =
-                find_horizontal_reflection_line(&transpose_map(&map), smudges)
-            {
-                line
-            } else {
-                unreachable!();
+impl Pattern {
+    fn transpose(&mut self) {
+        self.data = self.data.transpose();
+        std::mem::swap(&mut self.width, &mut self.height);
+    }
+
+    fn find_horizontal_reflection_line(&self, target_smudges: usize) -> Option<usize> {
+        let rows = unsafe {
+            let (prefix, rows, suffix) = self.data.bytes().align_to::<u32>();
+            assert!(prefix.is_empty());
+            assert!(suffix.is_empty());
+            rows
+        };
+
+        (1..self.height).find(|&num_rows_above| {
+            let num_rows_below = self.height - num_rows_above;
+            let max_offset = usize::min(num_rows_above - 1, num_rows_below - 1);
+
+            let mut smudges = 0;
+
+            for offset in 0..=max_offset {
+                let row_above = rows[num_rows_above - offset - 1];
+                let row_below = rows[num_rows_above + offset];
+
+                let diff = row_above ^ row_below;
+                smudges += diff.count_ones() as usize;
+
+                if smudges > target_smudges {
+                    return false;
+                }
             }
+
+            smudges == target_smudges
         })
-        .sum1()
+    }
+}
+
+impl std::fmt::Display for Pattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for i in 0..self.height {
+            for j in 0..self.width {
+                write!(f, "{}", if self.data.get(i, j) { '#' } else { '.' })?;
+            }
+            writeln!(f)?;
+        }
+        Ok(())
+    }
+}
+
+fn solve(input: &str, smudges: usize) -> Option<usize> {
+    parse_input_iter(input)
+        .map(|mut pattern| {
+            pattern
+                .find_horizontal_reflection_line(smudges)
+                .map_or_else(
+                    || {
+                        pattern.transpose();
+                        pattern.find_horizontal_reflection_line(smudges).unwrap()
+                    },
+                    |line| line * 100,
+                )
+        })
+        .sum::<usize>()
+        .into()
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
