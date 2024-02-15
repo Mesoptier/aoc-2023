@@ -1,5 +1,7 @@
-use advent_of_code::util::BitMatrix;
 use itertools::Itertools;
+
+use advent_of_code::util::BitMatrix;
+
 advent_of_code::solution!(13);
 
 fn parse_input_iter(input: &str) -> impl Iterator<Item = Pattern> + '_ {
