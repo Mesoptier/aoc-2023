@@ -6,14 +6,14 @@ pub trait Problem {
     type State;
     type Cost;
 
-    fn source_states(&self) -> impl Iterator<Item = Self::State>;
+    fn sources(&self) -> impl Iterator<Item = Self::State>;
     fn is_target(&self, state: &Self::State) -> bool;
     fn neighbors(&self, state: &Self::State) -> impl Iterator<Item = (Self::State, Self::Cost)>;
     fn heuristic(&self, state: &Self::State) -> Self::Cost;
 }
 
 pub trait BiDirProblem: Problem {
-    fn target_states(&self) -> impl Iterator<Item = Self::State>;
+    fn targets(&self) -> impl Iterator<Item = Self::State>;
     fn is_source(&self, state: &Self::State) -> bool;
     fn rev_neighbors(&self, state: &Self::State)
         -> impl Iterator<Item = (Self::State, Self::Cost)>;
@@ -31,7 +31,7 @@ where
     let mut best_costs: VecMap<P::State, P::Cost, SI> = VecMap::new(state_indexer.clone());
     let mut visited = VecSet::new(state_indexer.clone());
 
-    for state in problem.source_states() {
+    for state in problem.sources() {
         let cost = P::Cost::zero();
         best_costs.insert(&state, cost);
         let est_cost = cost + problem.heuristic(&state);

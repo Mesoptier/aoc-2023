@@ -97,7 +97,7 @@ impl shortest_path::Problem for ClumsyCrucibleProblem {
     type State = State;
     type Cost = u32;
 
-    fn source_states(&self) -> impl Iterator<Item = Self::State> {
+    fn sources(&self) -> impl Iterator<Item = Self::State> {
         [Axis::Horizontal, Axis::Vertical]
             .map(move |axis| State {
                 coord: self.source_coord,
@@ -177,7 +177,7 @@ impl shortest_path::Problem for ClumsyCrucibleProblem {
 }
 
 impl shortest_path::BiDirProblem for ClumsyCrucibleProblem {
-    fn target_states(&self) -> impl Iterator<Item = Self::State> {
+    fn targets(&self) -> impl Iterator<Item = Self::State> {
         [Axis::Horizontal, Axis::Vertical]
             .map(move |axis| State {
                 coord: self.target_coord,
