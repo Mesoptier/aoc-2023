@@ -10,6 +10,9 @@ pub trait Problem {
     fn is_target(&self, state: &Self::State) -> bool;
     fn neighbors(&self, state: &Self::State) -> impl Iterator<Item = (Self::State, Self::Cost)>;
     fn heuristic(&self, state: &Self::State) -> Self::Cost;
+
+    // TODO: Remove this method, in favor of a generic Queue type
+    fn cost_to_index(cost: Self::Cost) -> usize;
 }
 
 pub trait BiDirProblem: Problem {
@@ -25,7 +28,7 @@ where
     P: Problem,
     SI: Indexer<P::State> + Clone,
     P::State: Copy,
-    P::Cost: Num + Ord + Copy + TryInto<usize>,
+    P::Cost: Num + Ord + Copy,
 {
     let mut queue = BucketQueue::<Vec<P::State>>::new();
     let mut best_costs: VecMap<P::State, P::Cost, SI> = VecMap::new(state_indexer.clone());
@@ -35,10 +38,7 @@ where
         let cost = P::Cost::zero();
         best_costs.insert(&state, cost);
         let est_cost = cost + problem.heuristic(&state);
-        queue.push(
-            state,
-            est_cost.try_into().unwrap_or_else(|_| unreachable!()),
-        );
+        queue.push(state, P::cost_to_index(est_cost));
     }
 
     while let Some(state) = queue.pop_min() {
@@ -68,10 +68,7 @@ where
             }
 
             let est_next_cost = next_cost + problem.heuristic(&next_state);
-            queue.push(
-                next_state,
-                est_next_cost.try_into().unwrap_or_else(|_| unreachable!()),
-            );
+            queue.push(next_state, P::cost_to_index(est_next_cost));
         }
     }
 

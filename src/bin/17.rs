@@ -174,6 +174,10 @@ impl shortest_path::Problem for ClumsyCrucibleProblem {
         let State { coord, .. } = state;
         self.target_coord.x - coord.x + self.target_coord.y - coord.y
     }
+
+    fn cost_to_index(cost: Self::Cost) -> usize {
+        cost as usize
+    }
 }
 
 impl shortest_path::BiDirProblem for ClumsyCrucibleProblem {
