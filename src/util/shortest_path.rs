@@ -6,9 +6,10 @@ pub trait Problem {
     type State;
     type Cost;
 
-    fn sources(&self) -> impl Iterator<Item = Self::State>;
+    fn sources(&self) -> impl IntoIterator<Item = Self::State>;
     fn is_target(&self, state: &Self::State) -> bool;
-    fn neighbors(&self, state: &Self::State) -> impl Iterator<Item = (Self::State, Self::Cost)>;
+    fn neighbors(&self, state: &Self::State)
+        -> impl IntoIterator<Item = (Self::State, Self::Cost)>;
     fn heuristic(&self, state: &Self::State) -> Self::Cost;
 
     // TODO: Remove this method, in favor of a generic Queue type
@@ -16,10 +17,12 @@ pub trait Problem {
 }
 
 pub trait BiDirProblem: Problem {
-    fn targets(&self) -> impl Iterator<Item = Self::State>;
+    fn targets(&self) -> impl IntoIterator<Item = Self::State>;
     fn is_source(&self, state: &Self::State) -> bool;
-    fn rev_neighbors(&self, state: &Self::State)
-        -> impl Iterator<Item = (Self::State, Self::Cost)>;
+    fn rev_neighbors(
+        &self,
+        state: &Self::State,
+    ) -> impl IntoIterator<Item = (Self::State, Self::Cost)>;
     fn rev_heuristic(&self, state: &Self::State) -> Self::Cost;
 }
 

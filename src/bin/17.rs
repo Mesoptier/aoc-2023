@@ -93,24 +93,25 @@ struct ClumsyCrucibleProblem {
     max_steps: CoordT,
 }
 
-impl shortest_path::Problem for ClumsyCrucibleProblem {
+impl Problem for ClumsyCrucibleProblem {
     type State = State;
     type Cost = u32;
 
-    fn sources(&self) -> impl Iterator<Item = Self::State> {
-        [Axis::Horizontal, Axis::Vertical]
-            .map(move |axis| State {
-                coord: self.source_coord,
-                axis,
-            })
-            .into_iter()
+    fn sources(&self) -> impl IntoIterator<Item = Self::State> {
+        [Axis::Horizontal, Axis::Vertical].map(move |axis| State {
+            coord: self.source_coord,
+            axis,
+        })
     }
 
     fn is_target(&self, state: &Self::State) -> bool {
         state.coord == self.target_coord
     }
 
-    fn neighbors(&self, state: &Self::State) -> impl Iterator<Item = (Self::State, Self::Cost)> {
+    fn neighbors(
+        &self,
+        state: &Self::State,
+    ) -> impl IntoIterator<Item = (Self::State, Self::Cost)> {
         let State {
             coord: Coord { x, y },
             axis,
@@ -181,13 +182,11 @@ impl shortest_path::Problem for ClumsyCrucibleProblem {
 }
 
 impl shortest_path::BiDirProblem for ClumsyCrucibleProblem {
-    fn targets(&self) -> impl Iterator<Item = Self::State> {
-        [Axis::Horizontal, Axis::Vertical]
-            .map(move |axis| State {
-                coord: self.target_coord,
-                axis,
-            })
-            .into_iter()
+    fn targets(&self) -> impl IntoIterator<Item = Self::State> {
+        [Axis::Horizontal, Axis::Vertical].map(move |axis| State {
+            coord: self.target_coord,
+            axis,
+        })
     }
 
     fn is_source(&self, state: &Self::State) -> bool {
@@ -197,7 +196,7 @@ impl shortest_path::BiDirProblem for ClumsyCrucibleProblem {
     fn rev_neighbors(
         &self,
         state: &Self::State,
-    ) -> impl Iterator<Item = (Self::State, Self::Cost)> {
+    ) -> impl IntoIterator<Item = (Self::State, Self::Cost)> {
         self.neighbors(state)
     }
 
