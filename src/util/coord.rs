@@ -1,5 +1,5 @@
 use crate::util::Indexer;
-use num::One;
+use num::{Num, One};
 use std::marker::PhantomData;
 use std::ops::{Add, Sub};
 
@@ -46,7 +46,7 @@ impl<T> Coord<T> {
         Self { x, y }
     }
 
-    pub fn step_unchecked(&self, direction: Direction) -> Self
+    pub fn step(&self, direction: Direction) -> Self
     where
         T: Add<Output = T> + Sub<Output = T> + One + Copy,
     {
