@@ -8,22 +8,11 @@ pub trait Problem {
 
     fn sources(&self) -> impl IntoIterator<Item = Self::State>;
     fn is_target(&self, state: &Self::State) -> bool;
-    fn neighbors(&self, state: &Self::State)
-        -> impl IntoIterator<Item = (Self::State, Self::Cost)>;
+    fn neighbors(&self, state: &Self::State, callback: impl FnMut(Self::State, Self::Cost));
     fn heuristic(&self, state: &Self::State) -> Self::Cost;
 
     // TODO: Remove this method, in favor of a generic Queue type
     fn cost_to_index(cost: Self::Cost) -> usize;
-}
-
-pub trait BiDirProblem: Problem {
-    fn targets(&self) -> impl IntoIterator<Item = Self::State>;
-    fn is_source(&self, state: &Self::State) -> bool;
-    fn rev_neighbors(
-        &self,
-        state: &Self::State,
-    ) -> impl IntoIterator<Item = (Self::State, Self::Cost)>;
-    fn rev_heuristic(&self, state: &Self::State) -> Self::Cost;
 }
 
 pub fn a_star<P, SI>(problem: P, state_indexer: SI) -> Option<P::Cost>
@@ -57,22 +46,26 @@ where
             return Some(cost);
         }
 
-        for (next_state, next_cost) in problem.neighbors(&state) {
-            let next_cost = (cost + next_cost) as P::Cost;
-            match best_costs.entry(&next_state) {
-                Some(best_cost) if *best_cost <= next_cost => {
-                    // If we've already found a better path to this state, skip it
-                    continue;
+        problem.neighbors(
+            &state,
+            #[inline]
+            |next_state, next_cost| {
+                let next_cost = (cost + next_cost) as P::Cost;
+                match best_costs.entry(&next_state) {
+                    Some(best_cost) if *best_cost <= next_cost => {
+                        // If we've already found a better path to this state, skip it
+                        return;
+                    }
+                    entry => {
+                        // Otherwise, update the best cost and add the state to the queue
+                        *entry = Some(next_cost);
+                    }
                 }
-                entry => {
-                    // Otherwise, update the best cost and add the state to the queue
-                    *entry = Some(next_cost);
-                }
-            }
 
-            let est_next_cost = next_cost + problem.heuristic(&next_state);
-            queue.push(next_state, P::cost_to_index(est_next_cost));
-        }
+                let est_next_cost = next_cost + problem.heuristic(&next_state);
+                queue.push(next_state, P::cost_to_index(est_next_cost));
+            },
+        );
     }
 
     None
