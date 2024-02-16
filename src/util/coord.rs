@@ -1,7 +1,5 @@
 use crate::util::Indexer;
-use num::{Num, One};
 use std::marker::PhantomData;
-use std::ops::{Add, Sub};
 
 // TODO: Rename to North, East, South, West
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -45,31 +43,26 @@ impl<T> Coord<T> {
     pub fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
-
-    pub fn step(&self, direction: Direction) -> Self
-    where
-        T: Add<Output = T> + Sub<Output = T> + One + Copy,
-    {
-        match direction {
-            Direction::Up => Self {
-                x: self.x,
-                y: self.y - T::one(),
-            },
-            Direction::Right => Self {
-                x: self.x + T::one(),
-                y: self.y,
-            },
-            Direction::Down => Self {
-                x: self.x,
-                y: self.y + T::one(),
-            },
-            Direction::Left => Self {
-                x: self.x - T::one(),
-                y: self.y,
-            },
-        }
-    }
 }
+
+macro_rules! impl_coord {
+    ($($t:ty),*) => {
+        $(
+            impl Coord<$t> {
+                pub fn step(&self, direction: Direction) -> Self {
+                    match direction {
+                        Direction::Up => Self { x: self.x, y: self.y - 1 },
+                        Direction::Right => Self { x: self.x + 1, y: self.y },
+                        Direction::Down => Self { x: self.x, y: self.y + 1 },
+                        Direction::Left => Self { x: self.x - 1, y: self.y },
+                    }
+                }
+            }
+        )*
+    };
+}
+
+impl_coord!(u32, usize);
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub struct CoordIndexer<T = usize> {
