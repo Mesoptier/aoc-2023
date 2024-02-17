@@ -164,7 +164,7 @@ impl Problem for ClumsyCrucibleProblem {
     fn heuristic(&self, state: &Self::State) -> Self::Cost {
         // Manhattan distance to the target coord
         let State { coord, .. } = state;
-        self.target_coord.x - coord.x + self.target_coord.y - coord.y
+        self.target_coord.x.abs_diff(coord.x) + self.target_coord.y.abs_diff(coord.y)
     }
 }
 
