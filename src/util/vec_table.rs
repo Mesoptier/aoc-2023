@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct VecTable<K, V, I, D = Vec<V>> {
+pub struct VecTable<K, V, I, D = Box<[V]>> {
     data: D,
     indexer: I,
     _phantom: PhantomData<(K, V)>,
@@ -20,7 +20,7 @@ where
         let mut data = Vec::with_capacity(indexer.len());
         data.resize_with(indexer.len(), Default::default);
         Self {
-            data,
+            data: data.into_boxed_slice(),
             indexer,
             _phantom: PhantomData,
         }
@@ -37,7 +37,7 @@ where
         let mut data = Vec::with_capacity(indexer.len());
         data.resize_with(indexer.len(), || default.clone());
         Self {
-            data,
+            data: data.into_boxed_slice(),
             indexer,
             _phantom: PhantomData,
         }
@@ -52,14 +52,14 @@ where
     pub fn from_vec(data: Vec<V>, indexer: I) -> Self {
         assert_eq!(data.len(), indexer.len());
         Self {
-            data,
+            data: data.into_boxed_slice(),
             indexer,
             _phantom: PhantomData,
         }
     }
 
     pub fn to_vec(self) -> Vec<V> {
-        self.data
+        self.data.into_vec()
     }
 }
 

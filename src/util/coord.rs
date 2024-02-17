@@ -1,7 +1,6 @@
 use crate::util::Indexer;
-use num::One;
+use num::traits::WrappingAdd;
 use std::marker::PhantomData;
-use std::ops::{Add, Sub};
 
 // TODO: Rename to North, East, South, West
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -45,31 +44,69 @@ impl<T> Coord<T> {
     pub fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
+}
 
-    pub fn step_unchecked(&self, direction: Direction) -> Self
+macro_rules! impl_coord {
+    ($($t:ty),*) => {
+        $(
+            impl Coord<$t> {
+                pub fn step(&self, direction: Direction) -> Self {
+                    match direction {
+                        Direction::Up => Self { x: self.x, y: self.y - 1 },
+                        Direction::Right => Self { x: self.x + 1, y: self.y },
+                        Direction::Down => Self { x: self.x, y: self.y + 1 },
+                        Direction::Left => Self { x: self.x - 1, y: self.y },
+                    }
+                }
+            }
+        )*
+    };
+}
+
+impl_coord!(u32, usize);
+
+pub struct CoordStepper<T> {
+    dx: T,
+    dy: T,
+}
+
+impl<T> CoordStepper<T> {
+    #[inline]
+    pub fn new(dx: T, dy: T) -> Self {
+        Self { dx, dy }
+    }
+
+    #[inline]
+    pub fn step(&self, coord: Coord<T>) -> Coord<T>
     where
-        T: Add<Output = T> + Sub<Output = T> + One + Copy,
+        T: WrappingAdd,
     {
-        match direction {
-            Direction::Up => Self {
-                x: self.x,
-                y: self.y - T::one(),
-            },
-            Direction::Right => Self {
-                x: self.x + T::one(),
-                y: self.y,
-            },
-            Direction::Down => Self {
-                x: self.x,
-                y: self.y + T::one(),
-            },
-            Direction::Left => Self {
-                x: self.x - T::one(),
-                y: self.y,
-            },
+        Coord {
+            x: coord.x.wrapping_add(&self.dx),
+            y: coord.y.wrapping_add(&self.dy),
         }
     }
 }
+
+macro_rules! impl_coord_stepper {
+    ($($t:ty),*) => {
+        $(
+            impl CoordStepper<$t> {
+                #[inline]
+                pub fn from_direction(direction: Direction) -> Self {
+                    match direction {
+                        Direction::Up => Self::new(0, <$t>::MAX),
+                        Direction::Right => Self::new(1, 0),
+                        Direction::Down => Self::new(0, 1),
+                        Direction::Left => Self::new(<$t>::MAX, 0),
+                    }
+                }
+            }
+        )*
+    };
+}
+
+impl_coord_stepper!(u32, usize);
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub struct CoordIndexer<T = usize> {

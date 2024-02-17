@@ -321,7 +321,7 @@ mod graph {
         queue.push_back((start_coord, Direction::Down));
 
         while let Some((from_coord, direction)) = queue.pop_front() {
-            let mut coord = from_coord.step_unchecked(direction);
+            let mut coord = from_coord.step(direction);
             let mut prev_direction = direction;
             let mut cost = 1;
 
@@ -343,7 +343,7 @@ mod graph {
                     *direction != prev_direction.opposite()
                 })
                 .filter_map(|direction| {
-                    let next_coord = coord.step_unchecked(direction);
+                    let next_coord = coord.step(direction);
                     match tile_grid.get(next_coord) {
                         Some(Tile::Path) => Some((next_coord, direction)),
                         Some(Tile::Slope(slope_direction))

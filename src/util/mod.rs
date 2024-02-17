@@ -3,6 +3,7 @@ mod bit_set;
 mod char_grid;
 pub mod coord;
 mod indexer;
+pub mod shortest_path;
 mod vec_map;
 mod vec_set;
 mod vec_table;
