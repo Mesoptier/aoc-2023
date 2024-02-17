@@ -98,9 +98,9 @@
     },
     {
       "day": "17",
-      "part_1": "2.9ms",
-      "part_2": "4.4ms",
-      "total_nanos": 7300000
+      "part_1": "2.3ms",
+      "part_2": "3.0ms",
+      "total_nanos": 5300000
     },
     {
       "day": "18",

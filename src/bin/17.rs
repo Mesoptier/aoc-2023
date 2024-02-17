@@ -145,7 +145,10 @@ impl Problem for ClumsyCrucibleProblem {
                 let mut x = x;
                 let mut y = y;
 
-                for _ in 1..self.min_steps {
+                let num_pre_steps = self.min_steps - 1;
+                let num_steps = self.max_steps.min(steps_to_edge) - num_pre_steps;
+
+                for _ in 0..num_pre_steps {
                     x = x.wrapping_add(dx);
                     y = y.wrapping_add(dy);
 
@@ -153,7 +156,7 @@ impl Problem for ClumsyCrucibleProblem {
                     next_cost += self.grid.get(&next_coord);
                 }
 
-                (self.min_steps..=self.max_steps.min(steps_to_edge)).map(move |_| {
+                (0..num_steps).map(move |_| {
                     x = x.wrapping_add(dx);
                     y = y.wrapping_add(dy);
 

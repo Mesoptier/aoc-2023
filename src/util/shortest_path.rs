@@ -57,22 +57,28 @@ where
             return Some(cost);
         }
 
-        for (next_state, next_cost) in problem.neighbors(&state) {
-            let next_cost = (cost + next_cost) as P::Cost;
-            match best_costs.entry(&next_state) {
-                Some(best_cost) if *best_cost <= next_cost => {
-                    // If we've already found a better path to this state, skip it
-                    continue;
-                }
-                entry => {
-                    // Otherwise, update the best cost and add the state to the queue
-                    *entry = Some(next_cost);
-                }
-            }
+        problem
+            .neighbors(&state)
+            .into_iter()
+            .filter_map(|(next_state, next_cost)| {
+                let next_cost = (cost + next_cost) as P::Cost;
+                match best_costs.entry(&next_state) {
+                    Some(best_cost) if *best_cost <= next_cost => {
+                        // If we've already found a better path to this state, skip it
+                        None
+                    }
+                    entry => {
+                        // Otherwise, update the best cost and add the state to the queue
+                        *entry = Some(next_cost);
 
-            let est_next_cost = next_cost + problem.heuristic(&next_state);
-            queue.push(next_state, P::cost_to_index(est_next_cost));
-        }
+                        let est_next_cost = next_cost + problem.heuristic(&next_state);
+                        Some((next_state, est_next_cost))
+                    }
+                }
+            })
+            .for_each(|(next_state, est_next_cost)| {
+                queue.push(next_state, P::cost_to_index(est_next_cost));
+            });
     }
 
     None
