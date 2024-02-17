@@ -1,13 +1,16 @@
-use advent_of_code::util::coord::{CoordStepper, Direction};
-use advent_of_code::util::{shortest_path, Indexer, VecTable};
+use bucket_queue::{BucketQueue, LastInFirstOutQueue};
 
-use advent_of_code::util::shortest_path::Problem;
+use advent_of_code::util::coord::{CoordStepper, Direction};
+use advent_of_code::util::shortest_path::{BiDirProblem, OpenSet, Problem};
+use advent_of_code::util::{shortest_path, Indexer, VecSet, VecTable};
 
 advent_of_code::solution!(17);
 
 type CoordT = u32;
 type Coord = advent_of_code::util::coord::Coord<CoordT>;
 type CoordIndexer = advent_of_code::util::coord::CoordIndexer<CoordT>;
+
+type Cost = u32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Axis {
@@ -95,7 +98,7 @@ struct ClumsyCrucibleProblem {
 
 impl Problem for ClumsyCrucibleProblem {
     type State = State;
-    type Cost = u32;
+    type Cost = Cost;
 
     fn sources(&self) -> impl IntoIterator<Item = Self::State> {
         [Axis::Horizontal, Axis::Vertical].map(move |axis| State {
@@ -163,13 +166,9 @@ impl Problem for ClumsyCrucibleProblem {
         let State { coord, .. } = state;
         self.target_coord.x - coord.x + self.target_coord.y - coord.y
     }
-
-    fn cost_to_index(cost: Self::Cost) -> usize {
-        cost as usize
-    }
 }
 
-impl shortest_path::BiDirProblem for ClumsyCrucibleProblem {
+impl BiDirProblem for ClumsyCrucibleProblem {
     fn targets(&self) -> impl IntoIterator<Item = Self::State> {
         [Axis::Horizontal, Axis::Vertical].map(move |axis| State {
             coord: self.target_coord,
@@ -195,6 +194,37 @@ impl shortest_path::BiDirProblem for ClumsyCrucibleProblem {
     }
 }
 
+struct MyOpenSet {
+    queue: BucketQueue<Vec<State>>,
+    visited: VecSet<State, StateIndexer>,
+}
+
+impl MyOpenSet {
+    fn new(state_indexer: StateIndexer) -> Self {
+        Self {
+            queue: BucketQueue::new(),
+            visited: VecSet::new(state_indexer),
+        }
+    }
+}
+
+impl OpenSet<State, Cost> for MyOpenSet {
+    #[inline]
+    fn insert(&mut self, state: State, cost: Cost) {
+        self.queue.push(state, cost as usize)
+    }
+
+    #[inline]
+    fn pop_min(&mut self) -> Option<State> {
+        while let Some(state) = self.queue.pop_min() {
+            if self.visited.insert(state) {
+                return Some(state);
+            }
+        }
+        None
+    }
+}
+
 fn solve(input: &str, ultra: bool) -> Option<u32> {
     let grid = parse_input(input);
 
@@ -208,6 +238,8 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
     let source_coord = Coord::new(0, 0);
     let target_coord = Coord::new(width - 1, height - 1);
 
+    let state_indexer = StateIndexer::new(width, height);
+
     let problem = ClumsyCrucibleProblem {
         grid,
         width,
@@ -217,7 +249,7 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
         min_steps,
         max_steps,
     };
-    shortest_path::a_star(problem, StateIndexer::new(width, height))
+    shortest_path::a_star(problem, MyOpenSet::new(state_indexer), state_indexer)
 }
 
 pub fn part_one(input: &str) -> Option<u32> {

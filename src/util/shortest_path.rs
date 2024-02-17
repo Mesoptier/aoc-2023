@@ -1,6 +1,6 @@
-use crate::util::{Indexer, VecMap, VecSet};
-use bucket_queue::{BucketQueue, LastInFirstOutQueue};
 use num::{Num, Zero};
+
+use crate::util::{Indexer, VecMap};
 
 pub trait Problem {
     type State;
@@ -13,9 +13,6 @@ pub trait Problem {
         state: &Self::State,
     ) -> impl IntoIterator<Item = (Self::State, Self::Cost)>;
     fn heuristic(&self, state: &Self::State) -> Self::Cost;
-
-    // TODO: Remove this method, in favor of a generic Queue type
-    fn cost_to_index(cost: Self::Cost) -> usize;
 }
 
 pub trait BiDirProblem: Problem {
@@ -28,30 +25,29 @@ pub trait BiDirProblem: Problem {
     fn rev_heuristic(&self, state: &Self::State) -> Self::Cost;
 }
 
-pub fn a_star<P, SI>(problem: P, state_indexer: SI) -> Option<P::Cost>
+pub trait OpenSet<State, Cost> {
+    fn insert(&mut self, state: State, cost: Cost);
+    fn pop_min(&mut self) -> Option<State>;
+}
+
+pub fn a_star<P, OS, SI>(problem: P, mut open_set: OS, state_indexer: SI) -> Option<P::Cost>
 where
     P: Problem,
-    SI: Indexer<P::State> + Clone,
     P::State: Copy,
     P::Cost: Num + Ord + Copy,
+    OS: OpenSet<P::State, P::Cost>,
+    SI: Indexer<P::State>,
 {
-    let mut queue = BucketQueue::<Vec<P::State>>::new();
-    let mut best_costs: VecMap<P::State, P::Cost, SI> = VecMap::new(state_indexer.clone());
-    let mut visited = VecSet::new(state_indexer.clone());
+    let mut best_costs = VecMap::new(state_indexer);
 
     for state in problem.sources() {
         let cost = P::Cost::zero();
-        best_costs.insert(&state, cost);
         let est_cost = cost + problem.heuristic(&state);
-        queue.push(state, P::cost_to_index(est_cost));
+        best_costs.insert(&state, cost);
+        open_set.insert(state, est_cost);
     }
 
-    while let Some(state) = queue.pop_min() {
-        if !visited.insert(state) {
-            // Already visited this state
-            continue;
-        }
-
+    while let Some(state) = open_set.pop_min() {
         let cost = *best_costs.get(&state).unwrap();
 
         if problem.is_target(&state) {
@@ -79,7 +75,7 @@ where
                 }
             })
             .for_each(|(next_state, est_next_cost)| {
-                queue.push(next_state, P::cost_to_index(est_next_cost));
+                open_set.insert(next_state, est_next_cost);
             });
     }
 
