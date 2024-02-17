@@ -99,10 +99,17 @@ struct ClumsyCrucibleProblem {
     grid: Box<[Cost]>,
     grid_width: CoordT,
     grid_height: CoordT,
-    source_index: CoordIndex,
-    target_index: CoordIndex,
     min_steps: CoordT,
     max_steps: CoordT,
+}
+
+impl ClumsyCrucibleProblem {
+    fn source_index(&self) -> CoordIndex {
+        (self.grid.len() - 1) as CoordIndex
+    }
+    fn target_index(&self) -> CoordIndex {
+        0
+    }
 }
 
 impl Problem for ClumsyCrucibleProblem {
@@ -110,11 +117,11 @@ impl Problem for ClumsyCrucibleProblem {
     type Cost = Cost;
 
     fn sources(&self) -> impl IntoIterator<Item = Self::State> {
-        [Axis::Horizontal, Axis::Vertical].map(move |axis| State::new(self.source_index, axis))
+        [Axis::Horizontal, Axis::Vertical].map(move |axis| State::new(self.source_index(), axis))
     }
 
     fn is_target(&self, state: &Self::State) -> bool {
-        state.coord_index() == self.target_index
+        state.coord_index() == self.target_index()
     }
 
     fn successors(
@@ -127,25 +134,26 @@ impl Problem for ClumsyCrucibleProblem {
         axis.directions()
             .into_iter()
             .filter_map(move |direction| {
+                let x = (coord_index % self.grid_width) as CoordT;
+                let y = (coord_index / self.grid_width) as CoordT;
                 let steps_to_edge = match direction {
-                    Direction::Up => coord_index / self.grid_width,
-                    Direction::Right => self.grid_width - coord_index % self.grid_width - 1,
-                    Direction::Down => self.grid_height - coord_index / self.grid_width - 1,
-                    Direction::Left => coord_index % self.grid_width,
+                    Direction::Up => y,
+                    Direction::Right => self.grid_width - x - 1,
+                    Direction::Down => self.grid_height - y - 1,
+                    Direction::Left => x,
                 };
                 if steps_to_edge < self.min_steps {
                     // Not enough space to move in this direction
                     return None;
                 }
-
                 Some((direction, steps_to_edge))
             })
             .flat_map(move |(direction, steps_to_edge)| {
                 let coord_step = match direction {
-                    Direction::Up => CoordT::MAX - self.grid_width + 1,
+                    Direction::Up => 0u32.wrapping_sub(self.grid_width),
                     Direction::Right => 1,
                     Direction::Down => self.grid_width,
-                    Direction::Left => CoordT::MAX,
+                    Direction::Left => 0u32.wrapping_sub(1),
                 };
 
                 let mut next_coord_index = coord_index;
@@ -155,13 +163,13 @@ impl Problem for ClumsyCrucibleProblem {
                 let num_steps = self.max_steps.min(steps_to_edge) - num_pre_steps;
 
                 (0..num_pre_steps).for_each(|_| {
-                    next_coord_index = next_coord_index.wrapping_add(coord_step);
                     next_cost += self.grid[next_coord_index as usize];
+                    next_coord_index = next_coord_index.wrapping_add(coord_step);
                 });
 
                 (0..num_steps).map(move |_| {
-                    next_coord_index = next_coord_index.wrapping_add(coord_step);
                     next_cost += self.grid[next_coord_index as usize];
+                    next_coord_index = next_coord_index.wrapping_add(coord_step);
 
                     let next_state = State::new(next_coord_index, axis.orthogonal());
                     (next_state, next_cost as Cost)
@@ -174,8 +182,8 @@ impl Problem for ClumsyCrucibleProblem {
         let x = state.coord_index() % self.grid_width;
         let y = state.coord_index() / self.grid_width;
 
-        let target_x = self.target_index % self.grid_width;
-        let target_y = self.target_index / self.grid_width;
+        let target_x = self.target_index() % self.grid_width;
+        let target_y = self.target_index() / self.grid_width;
 
         target_x.abs_diff(x) + target_y.abs_diff(y)
     }
@@ -251,15 +259,12 @@ fn solve(input: &str, ultra: bool) -> Option<Cost> {
     let height = coord_indexer.height;
 
     let grid = grid.to_vec().into_boxed_slice();
-    let grid_len = grid.len();
-    let state_indexer = StateIndexer::new(grid_len);
+    let state_indexer = StateIndexer::new(grid.len());
 
     let problem = ClumsyCrucibleProblem {
         grid,
         grid_width: width,
         grid_height: height,
-        source_index: 0,
-        target_index: grid_len as u32 - 1,
         min_steps,
         max_steps,
     };
