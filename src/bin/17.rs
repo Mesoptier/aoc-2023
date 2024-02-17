@@ -1,7 +1,7 @@
 use bucket_queue::{BucketQueue, LastInFirstOutQueue};
 
 use advent_of_code::util::coord::{CoordStepper, Direction};
-use advent_of_code::util::shortest_path::{BiDirProblem, CostMap, OpenSet, Problem};
+use advent_of_code::util::shortest_path::{CostMap, OpenSet, Problem};
 use advent_of_code::util::{shortest_path, Indexer, VecMap, VecSet, VecTable};
 
 advent_of_code::solution!(17);
@@ -165,32 +165,6 @@ impl Problem for ClumsyCrucibleProblem {
         // Manhattan distance to the target coord
         let State { coord, .. } = state;
         self.target_coord.x - coord.x + self.target_coord.y - coord.y
-    }
-}
-
-impl BiDirProblem for ClumsyCrucibleProblem {
-    fn targets(&self) -> impl IntoIterator<Item = Self::State> {
-        [Axis::Horizontal, Axis::Vertical].map(move |axis| State {
-            coord: self.target_coord,
-            axis,
-        })
-    }
-
-    fn is_source(&self, state: &Self::State) -> bool {
-        state.coord == self.source_coord
-    }
-
-    fn rev_successors(
-        &self,
-        state: &Self::State,
-    ) -> impl IntoIterator<Item = (Self::State, Self::Cost)> {
-        self.successors(state)
-    }
-
-    fn rev_heuristic(&self, state: &Self::State) -> Self::Cost {
-        // Manhattan distance to the source coord
-        let State { coord, .. } = state;
-        self.source_coord.x - coord.x + self.source_coord.y - coord.y
     }
 }
 

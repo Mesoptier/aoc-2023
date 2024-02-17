@@ -13,16 +13,6 @@ pub trait Problem {
     fn heuristic(&self, state: &Self::State) -> Self::Cost;
 }
 
-pub trait BiDirProblem: Problem {
-    fn targets(&self) -> impl IntoIterator<Item = Self::State>;
-    fn is_source(&self, state: &Self::State) -> bool;
-    fn rev_successors(
-        &self,
-        state: &Self::State,
-    ) -> impl IntoIterator<Item = (Self::State, Self::Cost)>;
-    fn rev_heuristic(&self, state: &Self::State) -> Self::Cost;
-}
-
 pub trait OpenSet<State, Cost> {
     fn insert(&mut self, state: State, cost: Cost);
     fn pop_min(&mut self) -> Option<State>;
