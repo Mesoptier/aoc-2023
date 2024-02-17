@@ -108,59 +108,66 @@ impl Problem for ClumsyCrucibleProblem {
         state.coord == self.target_coord
     }
 
-    #[inline]
-    fn neighbors(&self, state: &Self::State, mut callback: impl FnMut(Self::State, Self::Cost)) {
+    fn neighbors(
+        &self,
+        state: &Self::State,
+    ) -> impl IntoIterator<Item = (Self::State, Self::Cost)> {
         let State {
             coord: Coord { x, y },
             axis,
         } = *state;
 
-        for direction in axis.directions() {
-            let steps_to_edge = match direction {
-                Direction::Up => y,
-                Direction::Right => self.width - x - 1,
-                Direction::Down => self.height - y - 1,
-                Direction::Left => x,
-            };
-            if steps_to_edge < self.min_steps {
-                // Not enough space to move in this direction
-                continue;
-            }
+        axis.directions()
+            .into_iter()
+            .filter_map(move |direction| {
+                let steps_to_edge = match direction {
+                    Direction::Up => y,
+                    Direction::Right => self.width - x - 1,
+                    Direction::Down => self.height - y - 1,
+                    Direction::Left => x,
+                };
+                if steps_to_edge < self.min_steps {
+                    // Not enough space to move in this direction
+                    return None;
+                }
 
-            let (dx, dy) = match direction {
-                Direction::Up => (0, (-1i32) as u32),
-                Direction::Right => (1, 0),
-                Direction::Down => (0, 1),
-                Direction::Left => ((-1i32) as u32, 0),
-            };
-
-            let mut next_cost = 0;
-            let mut x = x;
-            let mut y = y;
-
-            for _ in 1..self.min_steps {
-                x = x.wrapping_add(dx);
-                y = y.wrapping_add(dy);
-
-                let next_coord = Coord::new(x, y);
-                next_cost += self.grid.get(&next_coord);
-            }
-
-            for _ in self.min_steps..=self.max_steps.min(steps_to_edge) {
-                x = x.wrapping_add(dx);
-                y = y.wrapping_add(dy);
-
-                let next_coord = Coord::new(x, y);
-                next_cost += self.grid.get(&next_coord);
-
-                let next_state = State {
-                    coord: next_coord,
-                    axis: axis.orthogonal(),
+                let (dx, dy) = match direction {
+                    Direction::Up => (0, (-1i32) as u32),
+                    Direction::Right => (1, 0),
+                    Direction::Down => (0, 1),
+                    Direction::Left => ((-1i32) as u32, 0),
                 };
 
-                callback(next_state, next_cost);
-            }
-        }
+                Some((steps_to_edge, dx, dy))
+            })
+            .flat_map(move |(steps_to_edge, dx, dy)| {
+                let mut next_cost = 0;
+                let mut x = x;
+                let mut y = y;
+
+                for _ in 1..self.min_steps {
+                    x = x.wrapping_add(dx);
+                    y = y.wrapping_add(dy);
+
+                    let next_coord = Coord::new(x, y);
+                    next_cost += self.grid.get(&next_coord);
+                }
+
+                (self.min_steps..=self.max_steps.min(steps_to_edge)).map(move |_| {
+                    x = x.wrapping_add(dx);
+                    y = y.wrapping_add(dy);
+
+                    let next_coord = Coord::new(x, y);
+                    next_cost += self.grid.get(&next_coord);
+
+                    let next_state = State {
+                        coord: next_coord,
+                        axis: axis.orthogonal(),
+                    };
+
+                    (next_state, next_cost)
+                })
+            })
     }
 
     fn heuristic(&self, state: &Self::State) -> Self::Cost {
@@ -171,6 +178,32 @@ impl Problem for ClumsyCrucibleProblem {
 
     fn cost_to_index(cost: Self::Cost) -> usize {
         cost as usize
+    }
+}
+
+impl shortest_path::BiDirProblem for ClumsyCrucibleProblem {
+    fn targets(&self) -> impl IntoIterator<Item = Self::State> {
+        [Axis::Horizontal, Axis::Vertical].map(move |axis| State {
+            coord: self.target_coord,
+            axis,
+        })
+    }
+
+    fn is_source(&self, state: &Self::State) -> bool {
+        state.coord == self.source_coord
+    }
+
+    fn rev_neighbors(
+        &self,
+        state: &Self::State,
+    ) -> impl IntoIterator<Item = (Self::State, Self::Cost)> {
+        self.neighbors(state)
+    }
+
+    fn rev_heuristic(&self, state: &Self::State) -> Self::Cost {
+        // Manhattan distance to the source coord
+        let State { coord, .. } = state;
+        self.source_coord.x - coord.x + self.source_coord.y - coord.y
     }
 }
 
