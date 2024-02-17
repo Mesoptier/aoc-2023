@@ -63,7 +63,7 @@ macro_rules! impl_coord {
     };
 }
 
-impl_coord!(u32, usize);
+impl_coord!(u16, u32, usize);
 
 pub struct CoordStepper<T> {
     dx: T,
@@ -106,7 +106,7 @@ macro_rules! impl_coord_stepper {
     };
 }
 
-impl_coord_stepper!(u32, usize);
+impl_coord_stepper!(u16, u32, usize);
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub struct CoordIndexer<T = usize> {
@@ -120,25 +120,23 @@ impl<T> CoordIndexer<T> {
     }
 }
 
-impl Indexer<Coord<usize>> for CoordIndexer<usize> {
-    fn len(&self) -> usize {
-        self.width * self.height
-    }
+macro_rules! impl_coord_indexer {
+    ($($t:ty),*) => {
+        $(
+            impl Indexer<Coord<$t>> for CoordIndexer<$t> {
+                fn len(&self) -> usize {
+                    (self.width * self.height) as usize
+                }
 
-    fn index_for(&self, coord: &Coord) -> usize {
-        coord.y * self.width + coord.x
-    }
+                fn index_for(&self, coord: &Coord<$t>) -> usize {
+                    (coord.y * self.width + coord.x) as usize
+                }
+            }
+        )*
+    };
 }
 
-impl Indexer<Coord<u32>> for CoordIndexer<u32> {
-    fn len(&self) -> usize {
-        (self.width * self.height) as usize
-    }
-
-    fn index_for(&self, coord: &Coord<u32>) -> usize {
-        (coord.y * self.width + coord.x) as usize
-    }
-}
+impl_coord_indexer!(u16, u32, usize);
 
 impl CoordIndexer {
     /// Returns the coordinate one step in the given direction from the given coordinate, if it is in bounds.

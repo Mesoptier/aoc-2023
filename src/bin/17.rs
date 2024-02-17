@@ -1,6 +1,6 @@
 use bucket_queue::{BucketQueue, LastInFirstOutQueue};
 
-use advent_of_code::util::coord::{CoordStepper, Direction};
+use advent_of_code::util::coord::Direction;
 use advent_of_code::util::shortest_path::{CostMap, OpenSet, Problem};
 use advent_of_code::util::{shortest_path, Indexer, VecMap, VecSet, VecTable};
 
@@ -10,6 +10,7 @@ type CoordT = u32;
 type Coord = advent_of_code::util::coord::Coord<CoordT>;
 type CoordIndexer = advent_of_code::util::coord::CoordIndexer<CoordT>;
 
+type CoordIndex = u32;
 type Cost = u32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,40 +35,48 @@ impl Axis {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct State {
-    coord: Coord,
-    axis: Axis,
+/// LSB is the axis (0 = horizontal, 1 = vertical), the rest is the coord index
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct State(CoordIndex);
+
+impl State {
+    const fn new(coord_index: CoordIndex, axis: Axis) -> Self {
+        Self(coord_index << 1 | (axis as CoordIndex))
+    }
+
+    const fn coord_index(&self) -> CoordIndex {
+        self.0 >> 1
+    }
+
+    const fn axis(&self) -> Axis {
+        match self.0 & 1 {
+            0 => Axis::Horizontal,
+            1 => Axis::Vertical,
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
 struct StateIndexer {
-    coord_indexer: CoordIndexer,
+    grid_len: usize,
 }
 impl StateIndexer {
-    fn new(width: CoordT, height: CoordT) -> Self {
-        Self {
-            coord_indexer: CoordIndexer::new(width, height),
-        }
+    fn new(grid_len: usize) -> Self {
+        Self { grid_len }
     }
 }
 impl Indexer<State> for StateIndexer {
     fn len(&self) -> usize {
-        self.coord_indexer.len() * 2
+        self.grid_len * 2
     }
 
     fn index_for(&self, key: &State) -> usize {
-        let State { coord, axis } = key;
-        let coord_index = self.coord_indexer.index_for(coord);
-        let axis_index = match axis {
-            Axis::Horizontal => 0,
-            Axis::Vertical => 1,
-        };
-        coord_index * 2 + axis_index
+        key.0 as usize
     }
 }
 
-fn parse_input(input: &str) -> VecTable<Coord, u8, CoordIndexer> {
+fn parse_input(input: &str) -> VecTable<Coord, Cost, CoordIndexer> {
     let mut width = None;
     let data = input
         .lines()
@@ -77,7 +86,7 @@ fn parse_input(input: &str) -> VecTable<Coord, u8, CoordIndexer> {
             } else {
                 debug_assert_eq!(width, Some(line.len()));
             }
-            line.chars().map(|c| (c as u8) - b'0')
+            line.chars().map(|c| ((c as u8) - b'0') as Cost)
         })
         .collect::<Vec<_>>();
     let width = width.unwrap();
@@ -87,11 +96,11 @@ fn parse_input(input: &str) -> VecTable<Coord, u8, CoordIndexer> {
 }
 
 struct ClumsyCrucibleProblem {
-    grid: VecTable<Coord, u8, CoordIndexer>,
-    width: CoordT,
-    height: CoordT,
-    source_coord: Coord,
-    target_coord: Coord,
+    grid: Box<[Cost]>,
+    grid_width: CoordT,
+    grid_height: CoordT,
+    source_index: CoordIndex,
+    target_index: CoordIndex,
     min_steps: CoordT,
     max_steps: CoordT,
 }
@@ -101,30 +110,28 @@ impl Problem for ClumsyCrucibleProblem {
     type Cost = Cost;
 
     fn sources(&self) -> impl IntoIterator<Item = Self::State> {
-        [Axis::Horizontal, Axis::Vertical].map(move |axis| State {
-            coord: self.source_coord,
-            axis,
-        })
+        [Axis::Horizontal, Axis::Vertical].map(move |axis| State::new(self.source_index, axis))
     }
 
     fn is_target(&self, state: &Self::State) -> bool {
-        state.coord == self.target_coord
+        state.coord_index() == self.target_index
     }
 
     fn successors(
         &self,
         state: &Self::State,
     ) -> impl IntoIterator<Item = (Self::State, Self::Cost)> {
-        let State { coord, axis } = *state;
+        let coord_index = state.coord_index();
+        let axis = state.axis();
 
         axis.directions()
             .into_iter()
             .filter_map(move |direction| {
                 let steps_to_edge = match direction {
-                    Direction::Up => coord.y,
-                    Direction::Right => self.width - coord.x - 1,
-                    Direction::Down => self.height - coord.y - 1,
-                    Direction::Left => coord.x,
+                    Direction::Up => coord_index / self.grid_width,
+                    Direction::Right => self.grid_width - coord_index % self.grid_width - 1,
+                    Direction::Down => self.grid_height - coord_index / self.grid_width - 1,
+                    Direction::Left => coord_index % self.grid_width,
                 };
                 if steps_to_edge < self.min_steps {
                     // Not enough space to move in this direction
@@ -134,28 +141,29 @@ impl Problem for ClumsyCrucibleProblem {
                 Some((direction, steps_to_edge))
             })
             .flat_map(move |(direction, steps_to_edge)| {
-                let coord_stepper = CoordStepper::<CoordT>::from_direction(direction);
+                let coord_step = match direction {
+                    Direction::Up => CoordT::MAX - self.grid_width + 1,
+                    Direction::Right => 1,
+                    Direction::Down => self.grid_width,
+                    Direction::Left => CoordT::MAX,
+                };
 
-                let mut next_coord = coord;
+                let mut next_coord_index = coord_index;
                 let mut next_cost = 0;
 
                 let num_pre_steps = self.min_steps - 1;
                 let num_steps = self.max_steps.min(steps_to_edge) - num_pre_steps;
 
                 (0..num_pre_steps).for_each(|_| {
-                    next_coord = coord_stepper.step(next_coord);
-                    next_cost += self.grid.get(&next_coord);
+                    next_coord_index = next_coord_index.wrapping_add(coord_step);
+                    next_cost += self.grid[next_coord_index as usize];
                 });
 
                 (0..num_steps).map(move |_| {
-                    next_coord = coord_stepper.step(next_coord);
-                    next_cost += self.grid.get(&next_coord);
+                    next_coord_index = next_coord_index.wrapping_add(coord_step);
+                    next_cost += self.grid[next_coord_index as usize];
 
-                    let next_state = State {
-                        coord: next_coord,
-                        axis: axis.orthogonal(),
-                    };
-
+                    let next_state = State::new(next_coord_index, axis.orthogonal());
                     (next_state, next_cost as Cost)
                 })
             })
@@ -163,8 +171,13 @@ impl Problem for ClumsyCrucibleProblem {
 
     fn heuristic(&self, state: &Self::State) -> Self::Cost {
         // Manhattan distance to the target coord
-        let State { coord, .. } = state;
-        self.target_coord.x.abs_diff(coord.x) + self.target_coord.y.abs_diff(coord.y)
+        let x = state.coord_index() % self.grid_width;
+        let y = state.coord_index() / self.grid_width;
+
+        let target_x = self.target_index % self.grid_width;
+        let target_y = self.target_index / self.grid_width;
+
+        target_x.abs_diff(x) + target_y.abs_diff(y)
     }
 }
 
@@ -227,7 +240,7 @@ impl CostMap<State, Cost> for MyCostMap {
     }
 }
 
-fn solve(input: &str, ultra: bool) -> Option<u32> {
+fn solve(input: &str, ultra: bool) -> Option<Cost> {
     let grid = parse_input(input);
 
     let min_steps = if ultra { 4 } else { 1 };
@@ -237,17 +250,16 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
     let width = coord_indexer.width;
     let height = coord_indexer.height;
 
-    let source_coord = Coord::new(0, 0);
-    let target_coord = Coord::new(width - 1, height - 1);
-
-    let state_indexer = StateIndexer::new(width, height);
+    let grid = grid.to_vec().into_boxed_slice();
+    let grid_len = grid.len();
+    let state_indexer = StateIndexer::new(grid_len);
 
     let problem = ClumsyCrucibleProblem {
         grid,
-        width,
-        height,
-        source_coord,
-        target_coord,
+        grid_width: width,
+        grid_height: height,
+        source_index: 0,
+        target_index: grid_len as u32 - 1,
         min_steps,
         max_steps,
     };
@@ -258,11 +270,11 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
     )
 }
 
-pub fn part_one(input: &str) -> Option<u32> {
+pub fn part_one(input: &str) -> Option<Cost> {
     solve(input, false)
 }
 
-pub fn part_two(input: &str) -> Option<u32> {
+pub fn part_two(input: &str) -> Option<Cost> {
     solve(input, true)
 }
 
