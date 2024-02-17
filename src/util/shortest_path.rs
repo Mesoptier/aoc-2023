@@ -8,8 +8,10 @@ pub trait Problem {
 
     fn sources(&self) -> impl IntoIterator<Item = Self::State>;
     fn is_target(&self, state: &Self::State) -> bool;
-    fn neighbors(&self, state: &Self::State)
-        -> impl IntoIterator<Item = (Self::State, Self::Cost)>;
+    fn successors(
+        &self,
+        state: &Self::State,
+    ) -> impl IntoIterator<Item = (Self::State, Self::Cost)>;
     fn heuristic(&self, state: &Self::State) -> Self::Cost;
 
     // TODO: Remove this method, in favor of a generic Queue type
@@ -19,7 +21,7 @@ pub trait Problem {
 pub trait BiDirProblem: Problem {
     fn targets(&self) -> impl IntoIterator<Item = Self::State>;
     fn is_source(&self, state: &Self::State) -> bool;
-    fn rev_neighbors(
+    fn rev_successors(
         &self,
         state: &Self::State,
     ) -> impl IntoIterator<Item = (Self::State, Self::Cost)>;
@@ -58,7 +60,7 @@ where
         }
 
         problem
-            .neighbors(&state)
+            .successors(&state)
             .into_iter()
             .filter_map(|(next_state, next_cost)| {
                 let next_cost = (cost + next_cost) as P::Cost;

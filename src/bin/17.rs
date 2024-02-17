@@ -108,7 +108,7 @@ impl Problem for ClumsyCrucibleProblem {
         state.coord == self.target_coord
     }
 
-    fn neighbors(
+    fn successors(
         &self,
         state: &Self::State,
     ) -> impl IntoIterator<Item = (Self::State, Self::Cost)> {
@@ -181,11 +181,11 @@ impl shortest_path::BiDirProblem for ClumsyCrucibleProblem {
         state.coord == self.source_coord
     }
 
-    fn rev_neighbors(
+    fn rev_successors(
         &self,
         state: &Self::State,
     ) -> impl IntoIterator<Item = (Self::State, Self::Cost)> {
-        self.neighbors(state)
+        self.successors(state)
     }
 
     fn rev_heuristic(&self, state: &Self::State) -> Self::Cost {
