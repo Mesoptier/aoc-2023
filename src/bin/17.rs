@@ -19,14 +19,14 @@ enum Axis {
 }
 
 impl Axis {
-    fn orthogonal(&self) -> Axis {
+    const fn orthogonal(&self) -> Axis {
         match self {
             Axis::Horizontal => Axis::Vertical,
             Axis::Vertical => Axis::Horizontal,
         }
     }
 
-    fn directions(&self) -> [Direction; 2] {
+    const fn directions(&self) -> [Direction; 2] {
         match self {
             Axis::Horizontal => [Direction::Left, Direction::Right],
             Axis::Vertical => [Direction::Up, Direction::Down],
@@ -67,7 +67,7 @@ impl Indexer<State> for StateIndexer {
     }
 }
 
-fn parse_input(input: &str) -> VecTable<Coord, u32, CoordIndexer> {
+fn parse_input(input: &str) -> VecTable<Coord, u8, CoordIndexer> {
     let mut width = None;
     let data = input
         .lines()
@@ -77,7 +77,7 @@ fn parse_input(input: &str) -> VecTable<Coord, u32, CoordIndexer> {
             } else {
                 debug_assert_eq!(width, Some(line.len()));
             }
-            line.chars().map(|c| c.to_digit(10).unwrap())
+            line.chars().map(|c| (c as u8) - b'0')
         })
         .collect::<Vec<_>>();
     let width = width.unwrap();
@@ -87,7 +87,7 @@ fn parse_input(input: &str) -> VecTable<Coord, u32, CoordIndexer> {
 }
 
 struct ClumsyCrucibleProblem {
-    grid: VecTable<Coord, u32, CoordIndexer>,
+    grid: VecTable<Coord, u8, CoordIndexer>,
     width: CoordT,
     height: CoordT,
     source_coord: Coord,
@@ -142,10 +142,10 @@ impl Problem for ClumsyCrucibleProblem {
                 let num_pre_steps = self.min_steps - 1;
                 let num_steps = self.max_steps.min(steps_to_edge) - num_pre_steps;
 
-                for _ in 0..num_pre_steps {
+                (0..num_pre_steps).for_each(|_| {
                     next_coord = coord_stepper.step(next_coord);
                     next_cost += self.grid.get(&next_coord);
-                }
+                });
 
                 (0..num_steps).map(move |_| {
                     next_coord = coord_stepper.step(next_coord);
@@ -156,7 +156,7 @@ impl Problem for ClumsyCrucibleProblem {
                         axis: axis.orthogonal(),
                     };
 
-                    (next_state, next_cost)
+                    (next_state, next_cost as Cost)
                 })
             })
     }
