@@ -1,8 +1,8 @@
 use bucket_queue::{BucketQueue, LastInFirstOutQueue};
 
 use advent_of_code::util::coord::{CoordStepper, Direction};
-use advent_of_code::util::shortest_path::{BiDirProblem, OpenSet, Problem};
-use advent_of_code::util::{shortest_path, Indexer, VecSet, VecTable};
+use advent_of_code::util::shortest_path::{BiDirProblem, CostMap, OpenSet, Problem};
+use advent_of_code::util::{shortest_path, Indexer, VecMap, VecSet, VecTable};
 
 advent_of_code::solution!(17);
 
@@ -225,6 +225,34 @@ impl OpenSet<State, Cost> for MyOpenSet {
     }
 }
 
+struct MyCostMap {
+    map: VecMap<State, Cost, StateIndexer>,
+}
+
+impl MyCostMap {
+    fn new(state_indexer: StateIndexer) -> Self {
+        Self {
+            map: VecMap::new(state_indexer),
+        }
+    }
+}
+
+impl CostMap<State, Cost> for MyCostMap {
+    fn get(&self, state: &State) -> Option<Cost> {
+        self.map.get(state).copied()
+    }
+
+    fn insert(&mut self, state: State, cost: Cost) -> bool {
+        match self.map.entry(&state) {
+            Some(prev_cost) if *prev_cost <= cost => false,
+            entry => {
+                *entry = Some(cost);
+                true
+            }
+        }
+    }
+}
+
 fn solve(input: &str, ultra: bool) -> Option<u32> {
     let grid = parse_input(input);
 
@@ -249,7 +277,11 @@ fn solve(input: &str, ultra: bool) -> Option<u32> {
         min_steps,
         max_steps,
     };
-    shortest_path::a_star(problem, MyOpenSet::new(state_indexer), state_indexer)
+    shortest_path::a_star(
+        problem,
+        MyOpenSet::new(state_indexer),
+        MyCostMap::new(state_indexer),
+    )
 }
 
 pub fn part_one(input: &str) -> Option<u32> {

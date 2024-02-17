@@ -1,7 +1,5 @@
 use num::{Num, Zero};
 
-use crate::util::{Indexer, VecMap};
-
 pub trait Problem {
     type State;
     type Cost;
@@ -30,25 +28,28 @@ pub trait OpenSet<State, Cost> {
     fn pop_min(&mut self) -> Option<State>;
 }
 
-pub fn a_star<P, OS, SI>(problem: P, mut open_set: OS, state_indexer: SI) -> Option<P::Cost>
+pub trait CostMap<State, Cost> {
+    fn get(&self, state: &State) -> Option<Cost>;
+    fn insert(&mut self, state: State, cost: Cost) -> bool;
+}
+
+pub fn a_star<P, OS, CM>(problem: P, mut open_set: OS, mut cost_map: CM) -> Option<P::Cost>
 where
     P: Problem,
     P::State: Copy,
     P::Cost: Num + Ord + Copy,
     OS: OpenSet<P::State, P::Cost>,
-    SI: Indexer<P::State>,
+    CM: CostMap<P::State, P::Cost>,
 {
-    let mut best_costs = VecMap::new(state_indexer);
-
     for state in problem.sources() {
         let cost = P::Cost::zero();
         let est_cost = cost + problem.heuristic(&state);
-        best_costs.insert(&state, cost);
+        cost_map.insert(state, cost);
         open_set.insert(state, est_cost);
     }
 
     while let Some(state) = open_set.pop_min() {
-        let cost = *best_costs.get(&state).unwrap();
+        let cost = cost_map.get(&state).unwrap();
 
         if problem.is_target(&state) {
             // Found the target state
@@ -58,24 +59,12 @@ where
         problem
             .successors(&state)
             .into_iter()
-            .filter_map(|(next_state, next_cost)| {
+            .for_each(|(next_state, next_cost)| {
                 let next_cost = (cost + next_cost) as P::Cost;
-                match best_costs.entry(&next_state) {
-                    Some(best_cost) if *best_cost <= next_cost => {
-                        // If we've already found a better path to this state, skip it
-                        None
-                    }
-                    entry => {
-                        // Otherwise, update the best cost and add the state to the queue
-                        *entry = Some(next_cost);
-
-                        let est_next_cost = next_cost + problem.heuristic(&next_state);
-                        Some((next_state, est_next_cost))
-                    }
+                if cost_map.insert(next_state, next_cost) {
+                    let est_next_cost = (next_cost + problem.heuristic(&next_state)) as P::Cost;
+                    open_set.insert(next_state, est_next_cost);
                 }
-            })
-            .for_each(|(next_state, est_next_cost)| {
-                open_set.insert(next_state, est_next_cost);
             });
     }
 
