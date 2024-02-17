@@ -1,4 +1,4 @@
-use advent_of_code::util::coord::Direction;
+use advent_of_code::util::coord::{CoordStepper, Direction};
 use advent_of_code::util::{shortest_path, Indexer, VecTable};
 
 use advent_of_code::util::shortest_path::Problem;
@@ -112,55 +112,40 @@ impl Problem for ClumsyCrucibleProblem {
         &self,
         state: &Self::State,
     ) -> impl IntoIterator<Item = (Self::State, Self::Cost)> {
-        let State {
-            coord: Coord { x, y },
-            axis,
-        } = *state;
+        let State { coord, axis } = *state;
 
         axis.directions()
             .into_iter()
             .filter_map(move |direction| {
                 let steps_to_edge = match direction {
-                    Direction::Up => y,
-                    Direction::Right => self.width - x - 1,
-                    Direction::Down => self.height - y - 1,
-                    Direction::Left => x,
+                    Direction::Up => coord.y,
+                    Direction::Right => self.width - coord.x - 1,
+                    Direction::Down => self.height - coord.y - 1,
+                    Direction::Left => coord.x,
                 };
                 if steps_to_edge < self.min_steps {
                     // Not enough space to move in this direction
                     return None;
                 }
 
-                let (dx, dy) = match direction {
-                    Direction::Up => (0, (-1i32) as u32),
-                    Direction::Right => (1, 0),
-                    Direction::Down => (0, 1),
-                    Direction::Left => ((-1i32) as u32, 0),
-                };
-
-                Some((steps_to_edge, dx, dy))
+                Some((direction, steps_to_edge))
             })
-            .flat_map(move |(steps_to_edge, dx, dy)| {
+            .flat_map(move |(direction, steps_to_edge)| {
+                let coord_stepper = CoordStepper::<CoordT>::from_direction(direction);
+
+                let mut next_coord = coord;
                 let mut next_cost = 0;
-                let mut x = x;
-                let mut y = y;
 
                 let num_pre_steps = self.min_steps - 1;
                 let num_steps = self.max_steps.min(steps_to_edge) - num_pre_steps;
 
                 for _ in 0..num_pre_steps {
-                    x = x.wrapping_add(dx);
-                    y = y.wrapping_add(dy);
-
-                    let next_coord = Coord::new(x, y);
+                    next_coord = coord_stepper.step(next_coord);
                     next_cost += self.grid.get(&next_coord);
                 }
 
                 (0..num_steps).map(move |_| {
-                    x = x.wrapping_add(dx);
-                    y = y.wrapping_add(dy);
-
-                    let next_coord = Coord::new(x, y);
+                    next_coord = coord_stepper.step(next_coord);
                     next_cost += self.grid.get(&next_coord);
 
                     let next_state = State {
