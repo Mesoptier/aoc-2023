@@ -86,7 +86,11 @@ pub mod child_commands {
         let mut args = vec!["run", "--quiet", "--bin", &day_padded];
 
         if is_release {
-            args.push("--release");
+            args.push("--profile");
+            args.push(match day.into_inner() {
+                17 => "release-lto",
+                _ => "release",
+            })
         }
 
         if is_timed {
