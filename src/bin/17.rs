@@ -6,12 +6,12 @@ use advent_of_code::util::{shortest_path, Indexer, VecMap, VecSet, VecTable};
 
 advent_of_code::solution!(17);
 
-type CoordT = u32;
+type CoordT = u16;
 type Coord = advent_of_code::util::coord::Coord<CoordT>;
 type CoordIndexer = advent_of_code::util::coord::CoordIndexer<CoordT>;
 
-type CoordIndex = u32;
-type Cost = u32;
+type CoordIndex = u16;
+type Cost = u16;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Axis {
@@ -35,26 +35,10 @@ impl Axis {
     }
 }
 
-/// LSB is the axis (0 = horizontal, 1 = vertical), the rest is the coord index
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct State(CoordIndex);
-
-impl State {
-    const fn new(coord_index: CoordIndex, axis: Axis) -> Self {
-        Self(coord_index << 1 | (axis as CoordIndex))
-    }
-
-    const fn coord_index(&self) -> CoordIndex {
-        self.0 >> 1
-    }
-
-    const fn axis(&self) -> Axis {
-        match self.0 & 1 {
-            0 => Axis::Horizontal,
-            1 => Axis::Vertical,
-            _ => unreachable!(),
-        }
-    }
+struct State {
+    coord_index: CoordIndex,
+    axis: Axis,
 }
 
 #[derive(Clone, Copy)]
@@ -72,7 +56,12 @@ impl Indexer<State> for StateIndexer {
     }
 
     fn index_for(&self, key: &State) -> usize {
-        key.0 as usize
+        let coord_index = key.coord_index as usize;
+        let axis = match key.axis {
+            Axis::Horizontal => 0,
+            Axis::Vertical => 1,
+        };
+        (coord_index << 1) + axis
     }
 }
 
@@ -117,19 +106,22 @@ impl Problem for ClumsyCrucibleProblem {
     type Cost = Cost;
 
     fn sources(&self) -> impl IntoIterator<Item = Self::State> {
-        [Axis::Horizontal, Axis::Vertical].map(move |axis| State::new(self.source_index(), axis))
+        [Axis::Horizontal, Axis::Vertical].map(move |axis| {
+            let coord_index = self.source_index();
+            State { coord_index, axis }
+        })
     }
 
     fn is_target(&self, state: &Self::State) -> bool {
-        state.coord_index() == self.target_index()
+        state.coord_index == self.target_index()
     }
 
     fn successors(
         &self,
         state: &Self::State,
     ) -> impl IntoIterator<Item = (Self::State, Self::Cost)> {
-        let coord_index = state.coord_index();
-        let axis = state.axis();
+        let coord_index = state.coord_index;
+        let axis = state.axis;
 
         axis.directions()
             .into_iter()
@@ -150,10 +142,10 @@ impl Problem for ClumsyCrucibleProblem {
             })
             .flat_map(move |(direction, steps_to_edge)| {
                 let coord_step = match direction {
-                    Direction::Up => 0u32.wrapping_sub(self.grid_width),
+                    Direction::Up => (0 as CoordT).wrapping_sub(self.grid_width),
                     Direction::Right => 1,
                     Direction::Down => self.grid_width,
-                    Direction::Left => 0u32.wrapping_sub(1),
+                    Direction::Left => (0 as CoordT).wrapping_sub(1),
                 };
 
                 let mut next_coord_index = coord_index;
@@ -171,7 +163,10 @@ impl Problem for ClumsyCrucibleProblem {
                     next_cost += self.grid[next_coord_index as usize];
                     next_coord_index = next_coord_index.wrapping_add(coord_step);
 
-                    let next_state = State::new(next_coord_index, axis.orthogonal());
+                    let next_state = State {
+                        coord_index: next_coord_index,
+                        axis: axis.orthogonal(),
+                    };
                     (next_state, next_cost as Cost)
                 })
             })
@@ -179,8 +174,8 @@ impl Problem for ClumsyCrucibleProblem {
 
     fn heuristic(&self, state: &Self::State) -> Self::Cost {
         // Manhattan distance to the target coord
-        let x = state.coord_index() % self.grid_width;
-        let y = state.coord_index() / self.grid_width;
+        let x = state.coord_index % self.grid_width;
+        let y = state.coord_index / self.grid_width;
 
         let target_x = self.target_index() % self.grid_width;
         let target_y = self.target_index() / self.grid_width;
